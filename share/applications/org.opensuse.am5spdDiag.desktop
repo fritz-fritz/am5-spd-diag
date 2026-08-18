@@ -1,0 +1,21 @@
+[Desktop Entry]
+Type=Application
+Name=AM5 SPD diagnostics
+Comment=AMD AM5 DDR5 SPD hub diagnostics
+Exec=@LIBEXEC@/notify-app --status
+Icon=dialog-warning
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+Categories=System;Monitor;
+DBusActivatable=true
+X-GNOME-UsesNotifications=true
+Actions=analyze;report;
+
+[Desktop Action analyze]
+Name=Analyze
+Exec=@LIBEXEC@/notify-app --analyze
+
+[Desktop Action report]
+Name=Report
+Exec=@LIBEXEC@/notify-app --report

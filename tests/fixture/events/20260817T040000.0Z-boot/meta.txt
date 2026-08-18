@@ -1,0 +1,9 @@
+ts=2026-08-17T00:00:00-04:00
+event=boot
+sleep_type=
+boot_id=aaaaaaaa-1111-1111-1111-111111111111
+memtotal_kb=32000000
+mem_sleep=s2idle [deep]
+boot_kind=
+alert=false
+flags=

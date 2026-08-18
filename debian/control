@@ -1,0 +1,23 @@
+Source: am5-spd-diag
+Section: admin
+Priority: optional
+Maintainer: Fritz <code@fritztech.net>
+Build-Depends: debhelper (>= 13), make, python3
+Standards-Version: 4.6.2
+Homepage: https://build.opensuse.org/package/show/home:fritz-fritz/am5-spd-diag
+Rules-Requires-Root: no
+
+Package: am5-spd-diag
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}, python3, systemd
+Recommends: dmidecode, i2c-tools, pkexec | policykit-1, glow | python3-rich, python3-gi
+Description: AM5 DDR5 SPD hub diagnostics after sleep/warm reboot
+ Capture DIMM/SPD identity across boot, shutdown, and systemd sleep/resume
+ on AMD AM5 systems. Helps document the AGESA/firmware failure where a
+ warm reboot after sleep reports Unknown/2 GiB DIMMs until AC power is
+ removed.
+ .
+ Optional tools: dmidecode (SMBIOS fallback), i2c-tools (SPD5118 hub
+ probe/recover), pkexec (graphical snapshot for report/package), and glow
+ or python3-rich (markdown report paging from the notification).

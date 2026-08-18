@@ -1,0 +1,15 @@
+am5-spd-diag (0.1.0-1) unstable; urgency=medium
+
+  * Derive Debian changelog from am5-spd-diag.changes so RPM and Debian
+    packages share the same history.
+  * Fix Debian package metadata (maintainer, description, copyright,
+    Homepage, and recommends).
+  * Own /usr/lib/systemd/system-sleep so openSUSE post-build-checks does not
+    fail. Drop duplicate share-dir listing.
+  * Install docs into %{_docdir} so openSUSE finds LICENSE/README.
+  * Add Debian/Ubuntu OBS sources (dsc + debian.*) so those repos are not
+    excluded.
+  * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
+    reboot.
+
+ -- Fritz <code@fritztech.net>  Mon, 17 Aug 2026 21:24:00 +0000

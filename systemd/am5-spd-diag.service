@@ -1,0 +1,19 @@
+[Unit]
+Description=Capture AM5 DIMM/SPD evidence at boot and before shutdown/reboot
+Documentation=file:///usr/share/doc/am5-spd-diag/README.md
+DefaultDependencies=no
+After=local-fs.target
+RequiresMountsFor=/var/log
+Before=shutdown.target reboot.target halt.target poweroff.target
+Conflicts=shutdown.target reboot.target halt.target poweroff.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/am5-spd-diag capture boot
+ExecStop=/usr/bin/am5-spd-diag capture shutdown
+TimeoutStartSec=30
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

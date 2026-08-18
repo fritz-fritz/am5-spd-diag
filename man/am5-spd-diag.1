@@ -1,0 +1,71 @@
+.TH AM5-SPD-DIAG 1 "2026-08-17" "am5-spd-diag 0.1.0" "User Commands"
+.SH NAME
+am5-spd-diag \- AM5 DDR5 SPD hub diagnostics after sleep / warm reboot
+.SH SYNOPSIS
+.B am5-spd-diag
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+Captures AMD AM5 DIMM/SPD identity across boot, shutdown, and systemd sleep/resume.
+Detects firmware-visible SPD hub corruption (Unknown/missing part, 8-bit width,
+SPD5118 MR11=0x08) after sleep and a warm reboot.
+Sleep policy (deep / s2idle) is never changed.
+.PP
+Motherboard and DIMM serials are recorded for vendor tickets. System UUID and
+asset tags are omitted.
+.SH COMMANDS
+.TP
+.B status
+Whether SPD identity is healthy right now.
+.TP
+.B analyze
+Sleep/reboot history, corruption chain, hub evidence.
+.TP
+.B snapshot
+Capture DIMM/SPD evidence now (polkit; snapshot helper only).
+.TP
+.B report
+Polkit snapshot, then ticket markdown.
+.TP
+.B package
+Polkit snapshot, then evidence tarball.
+.TP
+.B probe
+Read SPD5118 MR11 on 0x50–0x53 (needs root; SMBus adapters only).
+.TP
+.B recover
+Experimental in-band MR11 clear. Does not reboot.
+.TP
+.B purge
+Delete captured logs. Does not uninstall the program.
+.PP
+A capture that finds current corruption posts a persistent urgent desktop
+notification (no timeout). Clicking it opens a terminal on
+.BR "am5-spd-diag status" .
+Analyze and Report buttons run those commands. Acting on the notice
+dismisses the banner but leaves it in notification history. GNOME can keep those
+actions after the sender exits. Other common desktops (Plasma, XFCE,
+Cinnamon, MATE, LXQt, dunst) only deliver clicks to the connection that
+called Notify, so the sender stays connected until the notice is clicked
+or dismissed. Report is paged with
+.B glow
+when available, otherwise
+.B less .
+.SH FILES
+.TP
+.I /var/log/am5-spd-diag
+Captures, reports, and packages.
+.TP
+.I /etc/am5-spd-diag.conf
+Optional overrides.
+.SH NOTES
+From a source tree, polkit only elevates the installed helper
+.I /usr/libexec/am5-spd-diag/pkexec-snapshot
+\&. Install with
+.B make PREFIX=/usr install
+or a distro package. The internal
+.B capture
+subcommand is used by systemd units and is not listed in
+.BR \-\-help .
+.SH SEE ALSO
+.BR dmidecode (8)

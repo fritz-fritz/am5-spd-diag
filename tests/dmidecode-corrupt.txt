@@ -1,0 +1,55 @@
+# dmidecode 3.7
+Getting SMBIOS data from sysfs.
+SMBIOS 3.8.0 present.
+
+Handle 0x000B, DMI type 16, 23 bytes
+Physical Memory Array
+	Location: System Board Or Motherboard
+	Use: System Memory
+	Error Correction Type: None
+	Maximum Capacity: 128 GiB
+	Error Information Handle: 0x000A
+	Number Of Devices: 4
+
+Handle 0x000E, DMI type 17, 100 bytes
+Memory Device
+	Total Width: Unknown
+	Data Width: Unknown
+	Size: No Module Installed
+	Locator: DIMMA1
+	Bank Locator: P0 CHANNEL A
+
+Handle 0x0010, DMI type 17, 100 bytes
+Memory Device
+	Total Width: 64 bits
+	Data Width: 64 bits
+	Size: 16 GiB
+	Locator: DIMMA2
+	Bank Locator: P0 CHANNEL A
+	Manufacturer: Unknown
+	Serial Number: B5066693
+	Part Number: CMH32GX5M2M6000Z36
+	Configured Memory Speed: 6000 MT/s
+	Module Manufacturer ID: Bank 3, Hex 0x9E
+	Volatile Size: 16 GiB
+
+Handle 0x0013, DMI type 17, 100 bytes
+Memory Device
+	Total Width: Unknown
+	Data Width: Unknown
+	Size: No Module Installed
+	Locator: DIMMB1
+	Bank Locator: P0 CHANNEL B
+
+Handle 0x0015, DMI type 17, 100 bytes
+Memory Device
+	Total Width: 8 bits
+	Data Width: 8 bits
+	Size: 2 GiB
+	Locator: DIMMB2
+	Bank Locator: P0 CHANNEL B
+	Manufacturer: Unknown
+	Serial Number: 00206200
+	Part Number: Unknown
+	Configured Memory Speed: 6000 MT/s
+	Volatile Size: None

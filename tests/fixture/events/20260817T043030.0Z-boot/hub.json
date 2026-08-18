@@ -1,0 +1,1 @@
+{"dmesg_stuck": ["1-0053"], "dmesg": ["spd5118 1-0053: Adapter does not support 16-bit register addresses"], "stuck": [{"bus": 1, "addr": 83, "addr_hex": "0x53", "sysfs": "1-0053", "mr11": 8, "mr11_hex": "0x08", "stuck": true, "adapter": "SMBus PIIX4 adapter", "spd_page0_head": "230c4d08000000000020620000000000"}], "hubs": []}

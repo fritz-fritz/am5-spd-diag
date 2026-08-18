@@ -1,0 +1,10 @@
+.osc/
+*.tar.xz
+*.tar.gz
+__pycache__/
+*.pyc
+debian/am5-spd-diag/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+tests/fixture/reports/

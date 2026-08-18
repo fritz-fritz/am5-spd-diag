@@ -1,0 +1,38 @@
+{
+  "ts": "2026-08-17T00:00:00-04:00",
+  "memtotal_kb": 32000000,
+  "cpu": "AMD Ryzen 7 9800X3D",
+  "dmi": {
+    "board_name": "PRO X870E-P WIFI (MS-7E70)",
+    "bios_version": "2.A52",
+    "bios_date": "06/29/2026",
+    "bios_release": "5.41",
+    "board_vendor": "Micro-Star International Co., Ltd.",
+    "board_serial": "07E701234567",
+    "sys_vendor": "Micro-Star International Co., Ltd."
+  },
+  "dimms": [
+    {
+      "locator": "DIMMA2",
+      "size": "16 GiB",
+      "total_width": "64 bits",
+      "data_width": "64 bits",
+      "manufacturer": "Corsair",
+      "part": "CMH32GX5M2M6000Z36",
+      "serial": "B5066693",
+      "speed": "6000 MT/s",
+      "mem_type": "DDR5"
+    },
+    {
+      "locator": "DIMMB2",
+      "size": "16 GiB",
+      "total_width": "64 bits",
+      "data_width": "64 bits",
+      "manufacturer": "Corsair",
+      "part": "CMH32GX5M2M6000Z36",
+      "serial": "C0FFEE00",
+      "speed": "6000 MT/s",
+      "mem_type": "DDR5"
+    }
+  ]
+}

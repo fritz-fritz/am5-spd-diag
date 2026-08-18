@@ -1,0 +1,1 @@
+2026-08-17T00:30:30-04:00 ALERT event=boot flags=unknown_part,dimm_8bit_width,ghost_page0 memtotal_kb=17800092 boot_kind=warm_reboot

@@ -1,0 +1,2 @@
+locator=DIMMA2|size=16 GiB|total_width=64 bits|data_width=64 bits|manufacturer=Corsair|serial=B5066693|part=CMH32GX5M2M6000Z36|speed=6000 MT/s|mem_type=DDR5|form_factor=DIMM|rank=1|voltage=1.1 V|mfg_id=Bank 3, Hex 0x9E
+locator=DIMMB2|size=2 GiB|total_width=8 bits|data_width=8 bits|manufacturer=Unknown|serial=00206200|part=Unknown|speed=6000 MT/s|mem_type=DDR5|form_factor=DIMM

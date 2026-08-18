@@ -1,0 +1,8 @@
+#!/bin/sh
+# Optional canary next to vendor GPU sleep hooks. Capture is done by
+# am5-spd-diag-pre-sleep.service / am5-spd-diag-post-sleep.service.
+set -u
+LOG=/var/log/am5-spd-diag/hook.log
+mkdir -p /var/log/am5-spd-diag 2>/dev/null || true
+echo "$(date -Is) systemd-sleep $1 ${2:-}" >>"$LOG" 2>/dev/null || true
+exit 0

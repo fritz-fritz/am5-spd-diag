@@ -1,0 +1,3 @@
+# SPD hub window (page 0 / 1-byte addressing), not full EEPROM
+# device 1-0053 first 16 bytes
+0000: 23 0c 4d 08 00 00 00 00 00 20 62 00 00 00 00 00

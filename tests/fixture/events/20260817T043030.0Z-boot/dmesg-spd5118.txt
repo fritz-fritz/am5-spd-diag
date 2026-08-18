@@ -1,0 +1,1 @@
+spd5118 1-0053: Adapter does not support 16-bit register addresses

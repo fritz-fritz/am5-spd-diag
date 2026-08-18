@@ -1,0 +1,14 @@
+[Unit]
+Description=Capture AM5 DIMM/SPD evidence after system resume
+Documentation=file:///usr/share/doc/am5-spd-diag/README.md
+DefaultDependencies=no
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+RequiresMountsFor=/var/log
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/am5-spd-diag capture post
+TimeoutStartSec=30
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

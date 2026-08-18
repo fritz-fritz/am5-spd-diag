@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
+<policyconfig>
+  <vendor>am5-spd-diag</vendor>
+  <vendor_url>https://build.opensuse.org/package/show/home:fritz-fritz/am5-spd-diag</vendor_url>
+  <icon_name>computer</icon_name>
+  <action id="org.opensuse.am5-spd-diag.snapshot">
+    <description>Capture AM5 SPD/DIMM evidence</description>
+    <description xml:lang="en">Capture AM5 SPD/DIMM evidence</description>
+    <message>Authentication is required to capture SMBIOS and SPD hub evidence for am5-spd-diag</message>
+    <message xml:lang="en">Authentication is required to capture SMBIOS and SPD hub evidence for am5-spd-diag</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+</policyconfig>

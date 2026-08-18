@@ -1,0 +1,361 @@
+#!/bin/bash
+# am5-spd-diag — AM5 DDR5 SPD/DIMM evidence capture and reporting.
+# Never changes sleep policy.
+set -u
+
+self_path() {
+  local src="${BASH_SOURCE[0]}"
+  if command -v readlink >/dev/null 2>&1; then
+    readlink -f "$src" 2>/dev/null && return 0
+  fi
+  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$src"
+}
+
+SELF="$(self_path)"
+SELF_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+
+if [[ "$SELF" == /usr/bin/am5-spd-diag ]]; then
+  LIBEXEC=/usr/libexec/am5-spd-diag
+  SHARE=/usr/share/am5-spd-diag
+elif [[ "$SELF" == /usr/local/bin/am5-spd-diag ]]; then
+  LIBEXEC=/usr/local/libexec/am5-spd-diag
+  SHARE=/usr/local/share/am5-spd-diag
+elif [[ -d "$SELF_DIR/../libexec" ]]; then
+  LIBEXEC="$(cd "$SELF_DIR/../libexec" && pwd)"
+  SHARE="$(cd "$SELF_DIR/.." && pwd)"
+else
+  echo "am5-spd-diag: cannot locate libexec next to $SELF" >&2
+  exit 1
+fi
+
+export AM5_SPD_DIAG_LIBEXEC="$LIBEXEC"
+export AM5_SPD_DIAG_SHARE="$SHARE"
+export AM5_SPD_DIAG_PREFIX="$SHARE"
+export PATH="/usr/sbin:/sbin:/usr/bin:/bin:$PATH"
+
+load_config() {
+  local f
+  for f in "$SHARE/config/default.conf" /etc/am5-spd-diag.conf; do
+    if [[ -f "$f" ]]; then
+      # shellcheck disable=SC1090
+      . "$f"
+    fi
+  done
+  export STATE_DIR="${AM5_SPD_DIAG_STATE_DIR:-${STATE_DIR:-/var/log/am5-spd-diag}}"
+  export AM5_SPD_DIAG_STATE_DIR="$STATE_DIR"
+  export KEEP_DAYS="${KEEP_DAYS:-60}"
+  export CAPTURE_TIMEOUT_SEC="${CAPTURE_TIMEOUT_SEC:-20}"
+}
+
+usage() {
+  cat <<'EOF'
+am5-spd-diag — AM5 DDR5 SPD hub diagnostics after sleep / warm reboot
+
+Usage: am5-spd-diag <command> [options]
+       am5-spd-diag help [command]
+
+Look
+  status              Is SPD identity healthy right now? Current DIMMs and units.
+  analyze             History: sleeps, warm reboot vs poweroff, hub evidence.
+  probe               Read SPD5118 MR11 on 0x50–0x53 (needs root).
+
+Capture
+  snapshot            Capture DIMM/SPD evidence now (polkit prompt; SMBIOS/i2c only).
+
+Report
+  report              Snapshot (polkit) then write ticket markdown.
+  package [--all]     Snapshot (polkit) then evidence tarball.
+
+Recover
+  recover             Experimental MR11 unstick. Warns; does not reboot.
+
+Logs
+  purge [--yes]       Delete captured evidence. Does not remove the program.
+
+Install and uninstall are handled by the package (rpm/deb) or
+`sudo make PREFIX=/usr install` / `uninstall` from this tree.
+Logs default to /var/log/am5-spd-diag. Corruption notifies logged-in sessions.
+EOF
+}
+
+usage_cmd() {
+  local cmd="${1:-}"
+  case "$cmd" in
+    status)
+      cat <<'EOF'
+am5-spd-diag status
+
+Show whether firmware is publishing healthy DIMM identity right now:
+  - SPD now: healthy | corrupted | unknown
+  - populated DIMMs (locator, size, part, width)
+  - firmware-published RAM size vs last healthy baseline
+  - systemd units and the system-sleep hook
+
+Does not dump sleep/reboot history. For that: am5-spd-diag analyze
+EOF
+      ;;
+    analyze)
+      cat <<'EOF'
+am5-spd-diag analyze
+
+Investigate captured history:
+  - sleep cycles this package recorded vs kernel suspend_stats
+  - warm reboot vs poweroff between healthy and corrupt snapshots
+  - per-boot timeline and corruption transitions
+  - SPD5118 hub / dmesg evidence
+
+Does not show unit health. For that: am5-spd-diag status
+Ticket markdown: am5-spd-diag report
+EOF
+      ;;
+    snapshot)
+      cat <<'EOF'
+am5-spd-diag snapshot
+
+Take one capture now (event=manual). Writes under $STATE_DIR/events/.
+If not root, prompts via polkit to run only the snapshot helper
+(/usr/libexec/am5-spd-diag/pkexec-snapshot). That helper cannot recover
+or change sleep policy.
+EOF
+      ;;
+    report)
+      cat <<'EOF'
+am5-spd-diag report [--no-snapshot]
+
+Capture a current snapshot (polkit, snapshot helper only), then fill the
+ticket template. Writes markdown under $STATE_DIR/reports/ (or
+~/.local/share/am5-spd-diag/reports/ if that directory is not writable).
+--no-snapshot skips the capture (tests / already-fresh logs).
+EOF
+      ;;
+    package)
+      cat <<'EOF'
+am5-spd-diag package [--all] [--no-snapshot]
+
+Build an evidence tarball (report, timeline, alerts, baseline, event dirs).
+Captures a snapshot first unless --no-snapshot.
+Default: alerted boots plus the preceding sleep/reboot chain.
+--all includes every captured event directory.
+EOF
+      ;;
+    probe)
+      cat <<'EOF'
+am5-spd-diag probe [--json]
+
+Read SPD5118 MR11 (register 0x0B) on SMBus addresses 0x50–0x53.
+Needs root and /dev/i2c-*. Stuck hubs report MR11=0x08.
+EOF
+      ;;
+    recover)
+      cat <<'EOF'
+am5-spd-diag recover [--yes]
+
+Experimental in-band clear of a stuck SPD5118 hub (MR11 0x08 → 0x0000).
+Prompts for YES unless --yes. Does not rewrite EEPROM. Does not reboot.
+A warm reboot is still required after a successful clear.
+EOF
+      ;;
+    purge)
+      cat <<'EOF'
+am5-spd-diag purge [--yes]
+
+Delete captured evidence (timeline, events, baseline, reports, packages).
+Does not uninstall the program, systemd units, or /etc/am5-spd-diag.conf.
+Needs root for /var/log/am5-spd-diag. Prompts for YES unless --yes.
+
+To remove the software itself: rpm/dnf/zypper/apt, or
+`sudo make PREFIX=/usr uninstall` from the source tree.
+EOF
+      ;;
+    help|"")
+      usage
+      ;;
+    *)
+      echo "am5-spd-diag: no help for command: $cmd" >&2
+      usage >&2
+      return 1
+      ;;
+  esac
+}
+
+need_root() {
+  if [[ "${EUID}" -ne 0 ]]; then
+    exec sudo -E "$SELF" "$@"
+  fi
+}
+
+PKEXEC_SNAPSHOT="/usr/libexec/am5-spd-diag/pkexec-snapshot"
+
+run_privileged_snapshot() {
+  if [[ "${EUID}" -eq 0 ]]; then
+    bash "$LIBEXEC/capture.sh" manual
+    return
+  fi
+  local helper=""
+  if [[ -x "$PKEXEC_SNAPSHOT" ]]; then
+    helper="$PKEXEC_SNAPSHOT"
+  elif [[ -x "$LIBEXEC/pkexec-snapshot" ]]; then
+    helper="$LIBEXEC/pkexec-snapshot"
+  fi
+  if [[ -n "$helper" ]] && command -v pkexec >/dev/null 2>&1; then
+    pkexec "$helper"
+    return
+  fi
+  echo "am5-spd-diag: snapshot needs the polkit helper ($PKEXEC_SNAPSHOT)." >&2
+  echo "Install the package, or re-run as root. Continuing without a privileged capture." >&2
+  return 1
+}
+
+cmd_report_or_package() {
+  local sub="$1"
+  shift
+  load_config
+  local skip_snapshot="${AM5_SPD_DIAG_SKIP_SNAPSHOT:-0}"
+  local -a py_args=()
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == --no-snapshot ]]; then
+      skip_snapshot=1
+    else
+      py_args+=("$arg")
+    fi
+  done
+  if [[ "$skip_snapshot" != 1 ]]; then
+    run_privileged_snapshot || true
+  fi
+  if ((${#py_args[@]})); then
+    cmd_analyze "$sub" "${py_args[@]}"
+  else
+    cmd_analyze "$sub"
+  fi
+}
+
+cmd_analyze() {
+  load_config
+  exec python3 "$LIBEXEC/analyze.py" "$@"
+}
+
+local_share_dirs() {
+  local home dir
+  if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != root ]]; then
+    home="$(getent passwd "$SUDO_USER" 2>/dev/null | cut -d: -f6 || true)"
+    if [[ -n "$home" ]]; then
+      dir="$home/.local/share/am5-spd-diag"
+      [[ -e "$dir" ]] && printf '%s\n' "$dir"
+    fi
+  fi
+  if [[ -n "${HOME:-}" && "$HOME" != / ]]; then
+    dir="$HOME/.local/share/am5-spd-diag"
+    [[ -e "$dir" ]] && printf '%s\n' "$dir"
+  fi
+}
+
+cmd_purge() {
+  load_config
+  local yes=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --yes|-y) yes=1 ;;
+      *)
+        echo "am5-spd-diag: unknown option: $arg" >&2
+        usage_cmd purge >&2
+        return 1
+        ;;
+    esac
+  done
+  need_root purge "$@"
+  case "$STATE_DIR" in
+    ""|/|/var|/var/log|/home|/usr|/etc)
+      echo "am5-spd-diag: refusing to purge unsafe STATE_DIR: ${STATE_DIR:-<empty>}" >&2
+      return 1
+      ;;
+  esac
+  local -a targets=("$STATE_DIR")
+  local extra
+  while IFS= read -r extra; do
+    [[ -n "$extra" ]] || continue
+    local seen=0 t
+    for t in "${targets[@]}"; do
+      [[ "$t" == "$extra" ]] && seen=1 && break
+    done
+    if [[ "$seen" -eq 0 ]]; then
+      targets+=("$extra")
+    fi
+  done < <(local_share_dirs)
+  echo "This deletes captured evidence (program and units stay installed):"
+  local path
+  for path in "${targets[@]}"; do
+    echo "  $path"
+  done
+  if [[ "$yes" != 1 ]]; then
+    local ans=""
+    read -r -p "Type YES to purge: " ans
+    if [[ "$ans" != YES ]]; then
+      echo "Aborted."
+      return 1
+    fi
+  fi
+  for path in "${targets[@]}"; do
+    rm -rf -- "$path"
+  done
+  if command -v systemd-tmpfiles >/dev/null 2>&1; then
+    systemd-tmpfiles --create /usr/lib/tmpfiles.d/am5-spd-diag.conf 2>/dev/null || true
+  fi
+  mkdir -p "$STATE_DIR"
+  echo "Purged."
+}
+
+main() {
+  local cmd="${1:-}"
+  shift || true
+  if [[ "$cmd" == help ]]; then
+    usage_cmd "${1:-}"
+    return
+  fi
+  if [[ "$cmd" != capture ]] && [[ ( -n "$cmd" && "${1:-}" == -h ) || ( -n "$cmd" && "${1:-}" == --help ) ]]; then
+    usage_cmd "$cmd"
+    return
+  fi
+  case "$cmd" in
+    -h|--help|"")
+      usage
+      ;;
+    status)
+      cmd_analyze status "$@"
+      ;;
+    capture)
+      load_config
+      exec bash "$LIBEXEC/capture.sh" "$@"
+      ;;
+    snapshot)
+      load_config
+      run_privileged_snapshot
+      ;;
+    analyze)
+      cmd_analyze summary "$@"
+      ;;
+    report)
+      cmd_report_or_package report "$@"
+      ;;
+    package)
+      cmd_report_or_package package "$@"
+      ;;
+    probe)
+      exec python3 "$LIBEXEC/spd_hub.py" probe "$@"
+      ;;
+    recover)
+      need_root recover "$@"
+      exec python3 "$LIBEXEC/spd_hub.py" recover "$@"
+      ;;
+    purge)
+      cmd_purge "$@"
+      ;;
+    *)
+      echo "am5-spd-diag: unknown command: $cmd" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
