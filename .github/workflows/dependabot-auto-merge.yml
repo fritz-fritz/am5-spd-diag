@@ -1,0 +1,71 @@
+# Same shape as GitHub's Dependabot Actions tutorial, minus repo auto-merge.
+# https://docs.github.com/en/code-security/tutorials/secure-your-dependencies/automate-dependabot-with-actions
+#
+# `gh pr merge --auto` requires Settings → Pull Requests → Allow auto-merge.
+# This repo keeps that off, so we wait for the CI job named `test` and then
+# squash-merge (Protect Main allows squash only).
+
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependabot:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'fritz-fritz/am5-spd-diag'
+    steps:
+      - name: Wait for CI and squash-merge
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 2400))
+
+          ci_ok=0
+          while (( SECONDS < deadline )); do
+            bucket=$(gh pr checks "$PR_URL" --json name,bucket \
+              --jq '[.[] | select(.name == "test")] | first | .bucket // "pending"')
+            echo "CI test: $bucket"
+            case "$bucket" in
+              fail)
+                echo "CI test failed" >&2
+                exit 1
+                ;;
+              pass)
+                ci_ok=1
+                break
+                ;;
+            esac
+            sleep 15
+          done
+          if [ "$ci_ok" -ne 1 ]; then
+            echo "timed out waiting for CI test" >&2
+            exit 1
+          fi
+
+          while (( SECONDS < deadline )); do
+            if gh pr merge --squash --delete-branch "$PR_URL"; then
+              exit 0
+            fi
+            status=$(gh pr view "$PR_URL" --json mergeStateStatus --jq .mergeStateStatus)
+            echo "mergeStateStatus=$status"
+            case "$status" in
+              DIRTY|DRAFT)
+                echo "PR cannot be merged ($status)" >&2
+                exit 1
+                ;;
+            esac
+            sleep 20
+          done
+          echo "timed out waiting for the PR to become mergeable" >&2
+          exit 1
