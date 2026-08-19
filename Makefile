@@ -9,8 +9,10 @@ UNITDIR     := $(PREFIX)/lib/systemd/system
 SLEEPDIR    := $(PREFIX)/lib/systemd/system-sleep
 TMPFILESDIR := $(PREFIX)/lib/tmpfiles.d
 POLKITDIR   := $(PREFIX)/share/polkit-1/actions
+POLKITRULESDIR := $(PREFIX)/share/polkit-1/rules.d
 MANDIR      := $(PREFIX)/share/man/man1
 APPDIR      := $(PREFIX)/share/applications
+ICONDIR     := $(PREFIX)/share/icons/hicolor
 DBUSDIR     := $(PREFIX)/share/dbus-1/services
 SYSCONFDIR  := /etc
 
@@ -18,84 +20,162 @@ INSTALL ?= install
 INSTALL_PROGRAM = $(INSTALL) -m 0755
 INSTALL_DATA    = $(INSTALL) -m 0644
 
-VERSION     ?= 0.1.0
+VERSION     ?= 1.0.0
 
-.PHONY: all test test-tool test-packaging install uninstall uninstall-purge dist
+# OBS project directories contain ':'; rustc rejects that in LD_LIBRARY_PATH.
+# Use a path without ':' and without $HOME so `sudo make install` finds the
+# binaries the user built (sudo resets PATH and HOME).
+ifneq ($(findstring :,$(CURDIR)),)
+CARGO_TARGET_DIR ?= /tmp/am5-spd-diag-target
+export CARGO_TARGET_DIR
+endif
 
-all:
-	@true
+CARGO ?= cargo
+CARGOFLAGS ?=
+ifneq ($(wildcard vendor),)
+CARGOFLAGS += --offline --config net.offline=true
+endif
+
+BIN_DEBUG = $(or $(CARGO_TARGET_DIR),target)/debug/$(NAME)
+BIN_RELEASE = $(or $(CARGO_TARGET_DIR),target)/release/$(NAME)
+NOTIFY_RELEASE = $(or $(CARGO_TARGET_DIR),target)/release/$(NAME)-notify
+
+.PHONY: build test test-tool test-packaging bump bump-check install uninstall uninstall-purge dist vendor
+
+build:
+	$(CARGO) build --release -p am5-spd-diag $(CARGOFLAGS)
+	$(CARGO) build --release -p am5-spd-diag-notify $(CARGOFLAGS)
 
 test: test-tool test-packaging
 
+bump:
+	@test -n "$(TO)" || { echo "usage: make bump TO=1.0.0 MSG='...'"; exit 1; }
+	python3 scripts/bump_version.py $(TO) $(if $(MSG),-m "$(MSG)")
+
+bump-check:
+	python3 scripts/bump_version.py --check $(TO)
+
 test-packaging:
 	python3 tests/test_changelogs.py
-	python3 scripts/gen_changelogs.py --check
-	cmp -s debian.control debian/control
-	cmp -s debian.copyright debian/copyright
-	cmp -s debian.rules debian/rules
-	cmp -s debian.compat debian/compat
+	python3 tests/test_bump_version.py
+	python3 scripts/bump_version.py --check
+	python3 -m py_compile scripts/bump_version.py scripts/gen_changelogs.py \
+	  scripts/obs_wait.py scripts/release_notes.py
+	python3 scripts/release_notes.py --version dummy --sha256 deadbeef | grep -q 'OBS download page'
+	if [ -f am5-spd-diag.changes ]; then python3 scripts/gen_changelogs.py --check; fi
+	if [ -d debian ]; then \
+	  cmp -s debian.control debian/control && \
+	  cmp -s debian.copyright debian/copyright && \
+	  cmp -s debian.rules debian/rules && \
+	  cmp -s debian.compat debian/compat; \
+	fi
 
 test-tool:
-	python3 -m py_compile libexec/analyze.py libexec/spd_hub.py libexec/notify_app.py scripts/gen_changelogs.py tests/test_dmidecode.py tests/test_smbios.py tests/test_analyze.py tests/test_i2c_filter.py tests/test_changelogs.py tests/test_notify.py
-	bash -n bin/$(NAME)
-	bash -n libexec/capture.sh
-	bash -n libexec/pkexec-snapshot
-	bash -n libexec/open-term
-	sh -n systemd/system-sleep/$(NAME)
-	python3 tests/test_dmidecode.py
-	python3 tests/test_smbios.py
-	python3 tests/test_analyze.py
-	python3 tests/test_i2c_filter.py
-	python3 tests/test_notify.py
-	python3 tests/make_fixture.py
-	test -z "$$(python3 libexec/spd_hub.py flags tests/fixture/events/20260817T040000.0Z-boot/dimm-summary.txt)"
-	python3 libexec/spd_hub.py flags tests/fixture/events/20260817T043030.0Z-boot/dimm-summary.txt | grep -q unknown_part
-	python3 libexec/spd_hub.py summarize tests/dmidecode-healthy.txt | grep -q 'locator=DIMMA2'
-	python3 libexec/spd_hub.py summarize tests/dmidecode-healthy.txt | grep -q 'part=CMH32GX5M2M6000Z36'
-	test -z "$$(python3 libexec/spd_hub.py summarize tests/dmidecode-healthy.txt | python3 libexec/spd_hub.py flags -)"
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) status | grep -q 'SPD now: corrupted'
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) status | grep -q 'Monitor'
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) analyze | grep -q 'SPD now: corrupted'
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) analyze | grep -q 'Reproduction pattern'
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) analyze | grep -q 'boot=warm_reboot'
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) status | grep -q 'System:'
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) analyze | grep -q 'System:'
-	python3 libexec/analyze.py inventory | grep -q bios_version
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) report --no-snapshot --out tests/fixture/report-out.md >/dev/null
-	grep -q '2.A52' tests/fixture/report-out.md
-	grep -q 'BIOS revision' tests/fixture/report-out.md
-	grep -q 'Kernel' tests/fixture/report-out.md
-	grep -q 'openSUSE Tumbleweed\|PRETTY_NAME\|OS' tests/fixture/report-out.md
-	grep -q '### Current' tests/fixture/report-out.md
-	grep -q 'Last healthy baseline' tests/fixture/report-out.md
-	grep -q 'SPD hub evidence' tests/fixture/report-out.md
-	grep -q '## Expected / Actual / Impact' tests/fixture/report-out.md
-	grep -q '6000 MT/s' tests/fixture/report-out.md
-	grep -q 'Board serial' tests/fixture/report-out.md
-	grep -q 'System RAM' tests/fixture/report-out.md
-	grep -q 'System RAM high range differs' tests/fixture/report-out.md
-	grep -q 'Full firmware e820 table' tests/fixture/report-out.md
-	grep -q 'reserved' tests/fixture/report-out.md
-	grep -q 'dirty power blip' tests/fixture/report-out.md
-	grep -q 'hub.json' tests/fixture/report-out.md
-	grep -qE 'any OS|VDDSPD' tests/fixture/report-out.md
-	! grep -qi 'serial numbers and uuids are not collected' tests/fixture/report-out.md
-	! grep -q 'Last alert:' tests/fixture/report-out.md
-	! grep -q 'Repro for engineering' tests/fixture/report-out.md
-	! grep -q 'Failure pattern' tests/fixture/report-out.md
-	! grep -qi 'to be filled by o.e.m' tests/fixture/report-out.md
-	! grep -q 'DIMMs before (healthy)' tests/fixture/report-out.md
-	sed 's|@HELPER@|/usr/libexec/am5-spd-diag/pkexec-snapshot|g' \
+	$(CARGO) test -p am5-spd-diag $(CARGOFLAGS)
+	$(CARGO) build -p am5-spd-diag $(CARGOFLAGS)
+	$(CARGO) build -p am5-spd-diag-notify $(CARGOFLAGS)
+	make test-cli BIN=$(BIN_DEBUG)
+	test -x $(or $(CARGO_TARGET_DIR),target)/debug/$(NAME)-notify
+	$(or $(CARGO_TARGET_DIR),target)/debug/$(NAME)-notify --notify >/dev/null 2>&1; test $$? -eq 2
+
+test-cli:
+	test -n "$(BIN)"
+	test -z "$$($(BIN) flags tests/fixture/events/20260817T040000.0Z-boot/dimm-summary.txt)"
+	$(BIN) flags tests/fixture/events/20260817T043030.0Z-boot/dimm-summary.txt | grep -q unknown_part
+	$(BIN) summarize tests/dmidecode-healthy.txt | grep -q 'locator=DIMMA2'
+	$(BIN) summarize tests/dmidecode-healthy.txt | grep -q 'part=CMH32GX5M2M6000Z36'
+	test -z "$$($(BIN) summarize tests/dmidecode-healthy.txt | $(BIN) flags -)"
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) status | grep -q 'SPD now: corrupted'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) status | grep -q 'Monitor'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q 'SPD now: corrupted'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q 'Reproduction pattern'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q 'boot=warm_reboot'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) status | grep -q 'System:'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q 'System'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q '| Board |'
+	$(BIN) inventory | grep -q bios_version
+	mkdir -p tests/fixture/reports
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) report --no-snapshot --out tests/fixture/reports/report-out.md > tests/fixture/reports/cli.out
+	grep -q '2.A52' tests/fixture/reports/report-out.md
+	grep -q 'BIOS revision' tests/fixture/reports/report-out.md
+	grep -q 'Kernel' tests/fixture/reports/report-out.md
+	grep -q 'openSUSE Tumbleweed\|PRETTY_NAME\|OS' tests/fixture/reports/report-out.md
+	grep -q '### Current' tests/fixture/reports/report-out.md
+	grep -q 'Last healthy baseline' tests/fixture/reports/report-out.md
+	grep -q 'SPD hub evidence' tests/fixture/reports/report-out.md
+	grep -q '## Expected / Actual / Impact' tests/fixture/reports/report-out.md
+	grep -q '6000 MT/s' tests/fixture/reports/report-out.md
+	grep -q 'Board serial' tests/fixture/reports/report-out.md
+	grep -q 'System RAM' tests/fixture/reports/report-out.md
+	grep -q 'System RAM high range differs' tests/fixture/reports/report-out.md
+	grep -q 'Full firmware e820 table' tests/fixture/reports/report-out.md
+	grep -q 'reserved' tests/fixture/reports/report-out.md
+	grep -q 'dirty power blip' tests/fixture/reports/report-out.md
+	grep -q 'hub.json' tests/fixture/reports/report-out.md
+	grep -qE 'any OS|VDDSPD' tests/fixture/reports/report-out.md
+	grep -q 'am5-spd-diag fix' tests/fixture/reports/report-out.md
+	grep -q 'page & 7' tests/fixture/reports/report-out.md
+	! grep -qi 'serial numbers and uuids are not collected' tests/fixture/reports/report-out.md
+	! grep -q 'Last alert:' tests/fixture/reports/report-out.md
+	! grep -q 'Repro for engineering' tests/fixture/reports/report-out.md
+	! grep -q 'Failure pattern' tests/fixture/reports/report-out.md
+	! grep -qi 'to be filled by o.e.m' tests/fixture/reports/report-out.md
+	! grep -q 'DIMMs before (healthy)' tests/fixture/reports/report-out.md
+	! grep -q 'remote debug checklist' tests/fixture/reports/report-out.md
+	grep -q '2.A52' tests/fixture/reports/cli.out
+	grep -q 'report-out.md' tests/fixture/reports/cli.out
+	sed 's|@HELPER@|/usr/libexec/am5-spd-diag/pkexec-snapshot|g; s|@LIBEXEC@|/usr/libexec/am5-spd-diag|g' \
 	  polkit/org.opensuse.am5-spd-diag.snapshot.policy.in | grep -q /usr/libexec/am5-spd-diag/pkexec-snapshot
-	AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) analyze | grep -q 'SPD5118 hub'
-	! AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) status | grep -q 'Reproduction pattern'
-	! AM5_SPD_DIAG_STATE_DIR=tests/fixture bin/$(NAME) analyze | grep -q 'Monitor'
-	bin/$(NAME) --help | grep -q 'am5-spd-diag <command>'
-	bin/$(NAME) help status | grep -q 'right now'
-	bin/$(NAME) help purge | grep -q 'Delete captured evidence'
-	! bin/$(NAME) --help | grep -qE '  (install|uninstall|capture) '
+	sed 's|@HELPER@|/usr/libexec/am5-spd-diag/pkexec-snapshot|g; s|@LIBEXEC@|/usr/libexec/am5-spd-diag|g' \
+	  polkit/org.opensuse.am5-spd-diag.snapshot.policy.in | grep -q /usr/libexec/am5-spd-diag/pkexec-probe
+	sed 's|@HELPER@|/usr/libexec/am5-spd-diag/pkexec-snapshot|g; s|@LIBEXEC@|/usr/libexec/am5-spd-diag|g' \
+	  polkit/org.opensuse.am5-spd-diag.snapshot.policy.in | grep -q /usr/libexec/am5-spd-diag/pkexec-recover
+	grep -q 'allow_active>yes' polkit/org.opensuse.am5-spd-diag.snapshot.policy.in
+	grep -q 'org.opensuse.am5-spd-diag.snapshot' polkit/org.opensuse.am5-spd-diag.rules
+	grep -A8 'org.opensuse.am5-spd-diag.recover' polkit/org.opensuse.am5-spd-diag.snapshot.policy.in | grep -q 'auth_admin'
+	grep -q 'experimental fix' polkit/org.opensuse.am5-spd-diag.snapshot.policy.in
+	grep -q '^Icon=org.opensuse.am5spdDiag$$' share/applications/org.opensuse.am5spdDiag.desktop
+	! grep -q '^NoDisplay=' share/applications/org.opensuse.am5spdDiag.desktop
+	test -f icons/ghost-peek.png
+	test -f icons/ghost-dimm.png
+	test -f icons/ghost-glyph.png
+	test -f icons/hicolor/48x48/apps/org.opensuse.am5spdDiag.png
+	test -f icons/hicolor/128x128/apps/org.opensuse.am5spdDiag.png
+	test -f icons/hicolor/256x256/apps/org.opensuse.am5spdDiag.png
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q 'SPD5118 hub'
+	! AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) status | grep -q 'Reproduction pattern'
+	! AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) analyze | grep -q 'Monitor'
+	$(BIN) --help | grep -q 'am5-spd-diag <command>'
+	$(BIN) help status | grep -q 'right now'
+	$(BIN) help report | grep -q 'Prints the markdown'
+	$(BIN) help report | grep -q -- '--from'
+	$(BIN) help analyze | grep -q -- '--from'
+	$(BIN) help open | grep -q 'GTK results window'
+	$(BIN) help snapshot | grep -q 'not need a password'
+	$(BIN) help probe | grep -q 'pkexec-probe'
+	$(BIN) help fix | grep -q 'Experimental in-band'
+	$(BIN) help recover | grep -q 'am5-spd-diag fix'
+	$(BIN) --help | grep -q '  fix '
+	$(BIN) help purge | grep -q 'Delete captured evidence'
+	! $(BIN) --help | grep -qE '  (install|uninstall|capture) '
+	mkdir -p tests/fixture/reports
+	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) package --no-snapshot --package-dir tests/fixture/reports > tests/fixture/reports/pkg.path
+	$(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'SPD now: corrupted'
+	$(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'Reproduction pattern'
+	$(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'boot=warm_reboot'
+	$(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q '2.A52'
+	$(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'Full firmware e820 table'
+	$(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" --out tests/fixture/reports/from-out.md | grep -q 'from-out.md'
+	grep -q '2.A52' tests/fixture/reports/from-out.md
+	! AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) status --from "$$(cat tests/fixture/reports/pkg.path)" >/dev/null 2>&1
 
 install:
+	@test -x "$(BIN_RELEASE)" && test -x "$(NOTIFY_RELEASE)" || { \
+	  echo "am5-spd-diag: missing release binaries at $(BIN_RELEASE)"; \
+	  echo "Build as your user (not sudo):  make build"; \
+	  echo "Then install:                   sudo make PREFIX=$(PREFIX) install"; \
+	  exit 1; \
+	}
 	$(INSTALL) -d $(DESTDIR)$(BINDIR)
 	$(INSTALL) -d $(DESTDIR)$(LIBEXECDIR)
 	$(INSTALL) -d $(DESTDIR)$(SHAREDIR)/config
@@ -105,18 +185,27 @@ install:
 	$(INSTALL) -d $(DESTDIR)$(SLEEPDIR)
 	$(INSTALL) -d $(DESTDIR)$(TMPFILESDIR)
 	$(INSTALL) -d $(DESTDIR)$(POLKITDIR)
+	$(INSTALL) -d $(DESTDIR)$(POLKITRULESDIR)
 	$(INSTALL) -d $(DESTDIR)$(MANDIR)
 	$(INSTALL) -d $(DESTDIR)$(APPDIR)
+	$(INSTALL) -d $(DESTDIR)$(ICONDIR)/48x48/apps
+	$(INSTALL) -d $(DESTDIR)$(ICONDIR)/128x128/apps
+	$(INSTALL) -d $(DESTDIR)$(ICONDIR)/256x256/apps
 	$(INSTALL) -d $(DESTDIR)$(DBUSDIR)
-	$(INSTALL_PROGRAM) bin/$(NAME) $(DESTDIR)$(BINDIR)/$(NAME)
-	$(INSTALL_PROGRAM) libexec/capture.sh $(DESTDIR)$(LIBEXECDIR)/capture.sh
-	$(INSTALL_PROGRAM) libexec/analyze.py $(DESTDIR)$(LIBEXECDIR)/analyze.py
-	$(INSTALL_PROGRAM) libexec/spd_hub.py $(DESTDIR)$(LIBEXECDIR)/spd_hub.py
-	$(INSTALL_PROGRAM) libexec/pkexec-snapshot $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot
-	$(INSTALL_PROGRAM) libexec/open-term $(DESTDIR)$(LIBEXECDIR)/open-term
-	$(INSTALL_PROGRAM) libexec/notify_app.py $(DESTDIR)$(LIBEXECDIR)/notify-app
+	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(BINDIR)/$(NAME)
+	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot
+	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-probe
+	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-recover
+	test -x "$(NOTIFY_RELEASE)"
+	$(INSTALL_PROGRAM) $(NOTIFY_RELEASE) $(DESTDIR)$(LIBEXECDIR)/am5-spd-diag-notify
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' share/applications/org.opensuse.am5spdDiag.desktop \
 	  > $(DESTDIR)$(APPDIR)/org.opensuse.am5spdDiag.desktop
+	$(INSTALL_DATA) icons/hicolor/48x48/apps/org.opensuse.am5spdDiag.png \
+	  $(DESTDIR)$(ICONDIR)/48x48/apps/org.opensuse.am5spdDiag.png
+	$(INSTALL_DATA) icons/hicolor/128x128/apps/org.opensuse.am5spdDiag.png \
+	  $(DESTDIR)$(ICONDIR)/128x128/apps/org.opensuse.am5spdDiag.png
+	$(INSTALL_DATA) icons/hicolor/256x256/apps/org.opensuse.am5spdDiag.png \
+	  $(DESTDIR)$(ICONDIR)/256x256/apps/org.opensuse.am5spdDiag.png
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' share/dbus-1/services/org.opensuse.am5spdDiag.service \
 	  > $(DESTDIR)$(DBUSDIR)/org.opensuse.am5spdDiag.service
 	$(INSTALL_DATA) config/default.conf $(DESTDIR)$(SHAREDIR)/config/default.conf
@@ -129,9 +218,12 @@ install:
 	$(INSTALL_PROGRAM) systemd/system-sleep/$(NAME) $(DESTDIR)$(SLEEPDIR)/$(NAME)
 	$(INSTALL_DATA) man/am5-spd-diag.1 $(DESTDIR)$(MANDIR)/am5-spd-diag.1
 	$(INSTALL_DATA) systemd/$(NAME).tmpfiles.conf $(DESTDIR)$(TMPFILESDIR)/$(NAME).conf
-	sed 's|@HELPER@|$(LIBEXECDIR)/pkexec-snapshot|g' \
+	sed -e 's|@HELPER@|$(LIBEXECDIR)/pkexec-snapshot|g' \
+	    -e 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 	  polkit/org.opensuse.am5-spd-diag.snapshot.policy.in \
 	  > $(DESTDIR)$(POLKITDIR)/org.opensuse.am5-spd-diag.snapshot.policy
+	$(INSTALL_DATA) polkit/org.opensuse.am5-spd-diag.rules \
+	  $(DESTDIR)$(POLKITRULESDIR)/org.opensuse.am5-spd-diag.rules
 	if [ ! -f $(DESTDIR)$(SYSCONFDIR)/$(NAME).conf ]; then \
 	  $(INSTALL) -d $(DESTDIR)$(SYSCONFDIR); \
 	  $(INSTALL_DATA) config/default.conf $(DESTDIR)$(SYSCONFDIR)/$(NAME).conf; \
@@ -139,6 +231,8 @@ install:
 	if [ -z "$(DESTDIR)" ]; then \
 	  systemd-tmpfiles --create $(TMPFILESDIR)/$(NAME).conf; \
 	  chcon -t bin_t $(SLEEPDIR)/$(NAME) 2>/dev/null || true; \
+	  gtk-update-icon-cache -f -t $(ICONDIR) >/dev/null 2>&1 || true; \
+	  update-desktop-database $(APPDIR) >/dev/null 2>&1 || true; \
 	  systemctl daemon-reload; \
 	  systemctl enable --now $(NAME).service; \
 	  systemctl enable $(NAME)-pre-sleep.service; \
@@ -157,21 +251,35 @@ uninstall:
 	-rm -f $(DESTDIR)$(SLEEPDIR)/$(NAME)
 	-rm -f $(DESTDIR)$(TMPFILESDIR)/$(NAME).conf
 	-rm -f $(DESTDIR)$(POLKITDIR)/org.opensuse.am5-spd-diag.snapshot.policy
+	-rm -f $(DESTDIR)$(POLKITRULESDIR)/org.opensuse.am5-spd-diag.rules
 	-rm -f $(DESTDIR)$(MANDIR)/am5-spd-diag.1
 	-rm -f $(DESTDIR)$(APPDIR)/$(NAME).desktop
 	-rm -f $(DESTDIR)$(APPDIR)/org.opensuse.am5spdDiag.desktop
+	-rm -f $(DESTDIR)$(ICONDIR)/48x48/apps/org.opensuse.am5spdDiag.png
+	-rm -f $(DESTDIR)$(ICONDIR)/128x128/apps/org.opensuse.am5spdDiag.png
+	-rm -f $(DESTDIR)$(ICONDIR)/256x256/apps/org.opensuse.am5spdDiag.png
 	-rm -f $(DESTDIR)$(DBUSDIR)/org.opensuse.am5spdDiag.service
-	if [ -z "$(DESTDIR)" ]; then systemctl daemon-reload; fi
+	if [ -z "$(DESTDIR)" ]; then \
+	  gtk-update-icon-cache -f -t $(ICONDIR) >/dev/null 2>&1 || true; \
+	  update-desktop-database $(APPDIR) >/dev/null 2>&1 || true; \
+	  systemctl daemon-reload; \
+	fi
 	@echo "Logs kept at /var/log/$(NAME) (am5-spd-diag purge, or make uninstall-purge)"
 
 uninstall-purge: uninstall
 	-rm -rf /var/log/$(NAME)
 	-rm -f $(DESTDIR)$(SYSCONFDIR)/$(NAME).conf
 
-dist:
+vendor:
+	mkdir -p .cargo
+	$(CARGO) vendor --locked vendor > .cargo/config.toml
+	@echo "Vendored crates into vendor/ (.cargo/config.toml for OBS --offline)"
+
+dist: vendor
 	tar -C .. -cJf $(NAME)-$(VERSION).tar.xz \
 	  --exclude=.osc --exclude='*.tar.xz' --exclude=debian \
 	  --exclude=__pycache__ --exclude='*.pyc' \
 	  --exclude=$(NAME).spec --exclude=$(NAME).changes \
+	  --exclude=target --exclude=.git --exclude=.cargo-home \
 	  --transform 's,^$(NAME),$(NAME)-$(VERSION),' \
 	  $(NAME)

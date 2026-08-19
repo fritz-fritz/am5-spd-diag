@@ -1,16 +1,20 @@
 # PRO X870E-P WIFI (MS-7E70) BIOS 2.A52: DIMM identity lost after sleep + warm reboot
 
-Generated: 2026-08-18T03:14:43.000676-04:00
+Generated: 2026-08-18T12:05:27.215870691-04:00
 
 ## Summary
 
-SPD identity is **currently corrupted**: firmware is publishing placeholder DIMM fields (Unknown/missing part and/or 8-bit width). Linux MemTotal is whatever firmware advertised, not a separate Linux bug. Warm reboot does not clear SPD5118 MR11 standby state; AC power loss does. Optional in-band recover: `sudo am5-spd-diag recover` then reboot.
+SPD identity is **currently corrupted**: firmware is publishing placeholder DIMM fields (Unknown/missing part and/or 8-bit width). Linux MemTotal is whatever firmware advertised, not a separate Linux bug. Warm reboot does not clear SPD5118 MR11 standby state; AC power loss does. Optional in-band fix: `am5-spd-diag fix` then reboot.
 
 ## Expected / Actual / Impact
 
 - **Slot map:** 2×16 GiB in DIMMA2+DIMMB2
-- **Expected:** DIMMA2 16 GiB 64 bits/64 bits CMH32GX5M2M6000Z36 6000 MT/s serial B5066693; DIMMB2 16 GiB 64 bits/64 bits CMH32GX5M2M6000Z36 6000 MT/s serial C0FFEE00; firmware MemTotal 32000000 kB (30.52 GiB)
-- **Actual:** DIMMA2 16 GiB 64 bits/64 bits CMH32GX5M2M6000Z36 6000 MT/s serial B5066693; DIMMB2 2 GiB 8 bits/8 bits Unknown 6000 MT/s serial 00206200; firmware MemTotal 17800092 kB (16.98 GiB) (live now 32250752 kB / 30.76 GiB)
+- **Expected** firmware MemTotal 32000000 kB (30.52 GiB):
+- **DIMMA2:** 16 GiB · 64 bits/64 bits · Corsair CMH32GX5M2M6000Z36 · 6000 MT/s · serial B5066693
+- **DIMMB2:** 16 GiB · 64 bits/64 bits · Corsair CMH32GX5M2M6000Z36 · 6000 MT/s · serial C0FFEE00
+- **Actual** firmware MemTotal 17800092 kB (16.98 GiB) (live now 32250752 kB / 30.76 GiB):
+- **DIMMA2:** 16 GiB · 64 bits/64 bits · Corsair CMH32GX5M2M6000Z36 · 6000 MT/s · serial B5066693
+- **DIMMB2:** 2 GiB · 8 bits/8 bits · Unknown Unknown · 6000 MT/s · serial 00206200
 - **Impact:** firmware published placeholder DIMM identity and a smaller memory map. Linux is reflecting SMBIOS/e820 from UEFI, not dropping RAM in the MM layer.
 
 ## System
@@ -34,7 +38,7 @@ Live values when this report was generated. Motherboard and DIMM serials are inc
 | OS | openSUSE Tumbleweed (opensuse-tumbleweed 20260815) |
 | Kernel | 7.1.8-1-default x86_64 |
 | Kernel build | #1 SMP PREEMPT_DYNAMIC Mon Aug 10 05:03:20 UTC 2026 (f1071af) |
-| Sleep policy | [s2idle] deep |
+| Sleep policy | s2idle [deep] |
 
 - Latest capture: `2026-08-17T00:30:30-04:00` event `boot`
 - Latest capture differs from live: kernel 7.1.5-1-default (live 7.1.8-1-default)
@@ -99,8 +103,10 @@ Suggested loop: known-healthy boot → N suspend/resume cycles → warm reboot �
 
 ### Boot timeline
 
-- boot `aaaaaaaa…` events=6 sleep_cycles=2 SPD=healthy first=`boot` last=`reboot` firmware 32000000 kB
-- boot `bbbbbbbb…` started=warm_reboot events=1 sleep_cycles=0 SPD=corrupted first=`boot` last=`boot` firmware 17800092 kB
+| Boot | Started | Events | Sleeps | SPD | First | Last | Firmware kB |
+|---|---|---|---|---|---|---|---|
+| `aaaaaaaa…` | — | 6 | 2 | healthy | `boot` | `reboot` | 32000000 |
+| `bbbbbbbb…` | warm_reboot | 1 | 0 | corrupted | `boot` | `boot` | 17800092 |
 
 ## Firmware memory map (e820)
 
@@ -109,14 +115,20 @@ Full firmware e820 table (all types, not only System RAM). Kernel dmesg timestam
 System RAM high range differs: healthy ends at `0x000000047fffffff`, corrupt ends at `0x000000041fffffff`.
 
 Healthy `2026-08-17T00:30:00-04:00` MemTotal 32000000 kB (baseline 32000000 kB / 30.52 GiB):
-    BIOS-e820: [mem 0x0000000000000000-0x000000000009ffff] System RAM
-    BIOS-e820: [mem 0x000000000009fc00-0x000000000009ffff] reserved
-    BIOS-e820: [mem 0x0000000100000000-0x000000047fffffff] System RAM
+
+```
+BIOS-e820: [mem 0x0000000000000000-0x000000000009ffff] System RAM
+BIOS-e820: [mem 0x000000000009fc00-0x000000000009ffff] reserved
+BIOS-e820: [mem 0x0000000100000000-0x000000047fffffff] System RAM
+```
 
 Corrupt `2026-08-17T00:30:30-04:00` MemTotal 17800092 kB (16.98 GiB):
-    BIOS-e820: [mem 0x0000000000000000-0x000000000009ffff] System RAM
-    BIOS-e820: [mem 0x000000000009fc00-0x000000000009ffff] reserved
-    BIOS-e820: [mem 0x0000000100000000-0x000000041fffffff] System RAM
+
+```
+BIOS-e820: [mem 0x0000000000000000-0x000000000009ffff] System RAM
+BIOS-e820: [mem 0x000000000009fc00-0x000000000009ffff] reserved
+BIOS-e820: [mem 0x0000000100000000-0x000000041fffffff] System RAM
+```
 
 ## SPD hub evidence
 
@@ -131,15 +143,16 @@ Evidence from this machine (corrupt captures kept even if identity later restore
 
 Firmware/UEFI is the authority for DIMM identity. Placeholder part/width fields are not a Linux memory-accounting bug. Linux is the observer: the same SPD5118 MR11 latch survives a warm reboot on any OS until VDDSPD power loss (AC cut). A Windows-only check is not required to prove this.
 
-Typical sequence: healthy baseline → sleep/wake → warm reboot (or POST) → Unknown/missing part and/or 8-bit width. Warm reboot does not clear SPD5118 MR11; AC power loss does. A dirty power blip or crash with no ACPI poweroff capture is not the same as pulling the cord: 5VSB/VDDSPD may stay up (DIMM RGB often stays lit). Optional in-band: `sudo am5-spd-diag recover` then reboot.
+Typical sequence: healthy baseline → sleep/wake → warm reboot (or POST) → Unknown/missing part and/or 8-bit width. Warm reboot does not clear SPD5118 MR11; AC power loss does. A dirty power blip or crash with no ACPI poweroff capture is not the same as pulling the cord: 5VSB/VDDSPD may stay up (DIMM RGB often stays lit). Optional in-band: `am5-spd-diag fix` then reboot.
 
 Suspected component: Montage **SPD5118** MR11 (I2C 0x0B) latched to **0x08** (2-byte addressing) on VDDSPD standby. Details: https://forum-en.msi.com/index.php?threads/ddr5-module-detected-as-2gb-ghost-dimm-after-s3-sleep-on-am5-root-cause-found.419787/
 
 Please:
 
-1. Mask SPD hub page selects to 3 bits and/or write MR11=0 early in POST.
-2. Confirm AGESA / vendor SPD code on AM5 after S0ix/S3 and warm reboot.
-3. If needed: remote debug checklist or private BIOS.
+1. Mask SPD hub page selects to 3 bits (`page & 7`) on **every** MR11 write, including ABL silent paths.
+2. Write `MR11 = 0x00` for each DIMM **early in POST**, before SMBIOS / Memory-Z reads, so a stuck hub is self-healing on the next boot.
+3. Confirm AGESA / vendor SPD code on AM5 after S0ix/S3 and warm reboot.
+4. If needed: this tool’s `report` / `package` output is meant to go on a ticket as-is.
 
 ## Logs
 

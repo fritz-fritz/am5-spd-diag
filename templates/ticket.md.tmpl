@@ -48,15 +48,16 @@ Live values when this report was generated. Motherboard and DIMM serials are inc
 
 Firmware/UEFI is the authority for DIMM identity. Placeholder part/width fields are not a Linux memory-accounting bug. Linux is the observer: the same SPD5118 MR11 latch survives a warm reboot on any OS until VDDSPD power loss (AC cut). A Windows-only check is not required to prove this.
 
-Typical sequence: healthy baseline → sleep/wake → warm reboot (or POST) → Unknown/missing part and/or 8-bit width. Warm reboot does not clear SPD5118 MR11; AC power loss does. A dirty power blip or crash with no ACPI poweroff capture is not the same as pulling the cord: 5VSB/VDDSPD may stay up (DIMM RGB often stays lit). Optional in-band: `sudo am5-spd-diag recover` then reboot.
+Typical sequence: healthy baseline → sleep/wake → warm reboot (or POST) → Unknown/missing part and/or 8-bit width. Warm reboot does not clear SPD5118 MR11; AC power loss does. A dirty power blip or crash with no ACPI poweroff capture is not the same as pulling the cord: 5VSB/VDDSPD may stay up (DIMM RGB often stays lit). Optional in-band: `am5-spd-diag fix` then reboot.
 
 Suspected component: Montage **SPD5118** MR11 (I2C 0x0B) latched to **0x08** (2-byte addressing) on VDDSPD standby. Details: {{FORUM_URL}}
 
 Please:
 
-1. Mask SPD hub page selects to 3 bits and/or write MR11=0 early in POST.
-2. Confirm AGESA / vendor SPD code on AM5 after S0ix/S3 and warm reboot.
-3. If needed: remote debug checklist or private BIOS.
+1. Mask SPD hub page selects to 3 bits (`page & 7`) on **every** MR11 write, including ABL silent paths.
+2. Write `MR11 = 0x00` for each DIMM **early in POST**, before SMBIOS / Memory-Z reads, so a stuck hub is self-healing on the next boot.
+3. Confirm AGESA / vendor SPD code on AM5 after S0ix/S3 and warm reboot.
+4. If needed: this tool’s `report` / `package` output is meant to go on a ticket as-is.
 
 ## Logs
 

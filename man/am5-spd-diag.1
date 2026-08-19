@@ -1,4 +1,4 @@
-.TH AM5-SPD-DIAG 1 "2026-08-17" "am5-spd-diag 0.1.0" "User Commands"
+.TH AM5-SPD-DIAG 1 "2026-08-17" "am5-spd-diag 1.0.0" "User Commands"
 .SH NAME
 am5-spd-diag \- AM5 DDR5 SPD hub diagnostics after sleep / warm reboot
 .SH SYNOPSIS
@@ -16,41 +16,71 @@ asset tags are omitted.
 .SH COMMANDS
 .TP
 .B status
-Whether SPD identity is healthy right now.
+Whether SPD identity is healthy as of the last capture, plus live MemTotal.
 .TP
 .B analyze
 Sleep/reboot history, corruption chain, hub evidence.
+.B \-\-from
+.I FILE
+loads a package tarball (or extracted directory) instead of live logs.
+.TP
+.B open
+Open the GTK results window. Optional
+.I status
+,
+.I analyze
+,
+.I report
+, or
+.I probe
+plus
+.B \-\-from
+.I FILE
 .TP
 .B snapshot
-Capture DIMM/SPD evidence now (polkit; snapshot helper only).
+Capture DIMM/SPD evidence now. A local active session does not need a
+password. Uses the snapshot helper only (no fix).
 .TP
 .B report
-Polkit snapshot, then ticket markdown.
+Snapshot, then print ticket markdown and save it. The GTK Report view
+uses the last capture and does not snapshot.
+.B \-\-from
+.I FILE
+skips snapshot and reads a package instead. Prints markdown only unless
+.B \-\-out
+.I FILE
+is given.
 .TP
 .B package
-Polkit snapshot, then evidence tarball.
+Snapshot, then evidence tarball.
 .TP
 .B probe
-Read SPD5118 MR11 on 0x50–0x53 (needs root; SMBus adapters only).
+Read MR11 on kernel spd5118 hubs (host SMBus). A local active session
+does not need a password.
 .TP
-.B recover
-Experimental in-band MR11 clear. Does not reboot.
+.B fix
+Experimental in-band MR11 clear. Requires admin authentication. Records a recover timeline event. Does not reboot.
 .TP
 .B purge
 Delete captured logs. Does not uninstall the program.
 .PP
 A capture that finds current corruption posts a persistent urgent desktop
-notification (no timeout). Clicking it opens a terminal on
-.BR "am5-spd-diag status" .
-Analyze and Report buttons run those commands. Acting on the notice
-dismisses the banner but leaves it in notification history. GNOME can keep those
-actions after the sender exits. Other common desktops (Plasma, XFCE,
-Cinnamon, MATE, LXQt, dunst) only deliver clicks to the connection that
-called Notify, so the sender stays connected until the notice is clicked
-or dismissed. Report is paged with
-.B glow
-when available, otherwise
-.B less .
+notification (no timeout). The notice uses the warning emblem as its image
+and the application icon from the desktop file. Clicking it opens the GTK
+results window on
+.BR "am5-spd-diag status"
+(or
+.BR "am5-spd-diag open" ).
+Analyze and Report buttons (on the notice and in the window footer) show
+those views. Copy puts the current text on the clipboard. Package writes
+an evidence tarball (no extra snapshot) and opens its folder in the file
+manager so a ticket can be filed without a terminal. Acting on the
+notice closes it with CloseNotification. GNOME can keep those actions
+after the sender exits. Other common desktops (Plasma, XFCE, Cinnamon,
+MATE, LXQt, dunst) only deliver clicks to the connection that called
+Notify, so the sender stays connected until the notice is clicked or
+dismissed. SSH/console sessions still get journal and
+.BR wall .
 .SH FILES
 .TP
 .I /var/log/am5-spd-diag
@@ -59,10 +89,18 @@ Captures, reports, and packages.
 .I /etc/am5-spd-diag.conf
 Optional overrides.
 .SH NOTES
-From a source tree, polkit only elevates the installed helper
+From a source tree, polkit only authorizes the installed helpers
 .I /usr/libexec/am5-spd-diag/pkexec-snapshot
-\&. Install with
-.B make PREFIX=/usr install
+,
+.I pkexec-probe
+, and
+.I pkexec-recover
+\&. Snapshot and probe are allowed without a password for a local
+active session. Fix (GTK Fix) still requires admin authentication.
+Install with
+.B make build
+then
+.B sudo make PREFIX=/usr install
 or a distro package. The internal
 .B capture
 subcommand is used by systemd units and is not listed in

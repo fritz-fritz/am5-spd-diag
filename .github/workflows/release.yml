@@ -1,0 +1,204 @@
+# Cut a release by tagging vX.Y.Z after a local version bump.
+#
+# Maintainer flow:
+#   1. make bump TO=X.Y.Z MSG='Why this release.'
+#   2. Review the diff (lockfile, changelogs, packaging) and commit.
+#   3. git tag vX.Y.Z && git push origin vX.Y.Z
+#
+# This workflow does not run `make bump`. It verifies the tag already matches
+# Cargo/Makefile/spec/dsc/man, builds the vendored source tarball, commits that
+# tarball plus packaging files into OBS home:fritz-fritz/am5-spd-diag, waits for
+# OBS, then attaches the binaries and tarball to a GitHub Release.
+#
+# Repository secrets (Settings → Secrets and variables → Actions):
+#   OBS_USER      OBS account that owns home:fritz-fritz
+#   OBS_PASSWORD  OBS password / app password for osc (api.opensuse.org)
+#
+# workflow_dispatch retries asset attach for an existing tag without committing
+# sources to OBS again (use this if the wait timed out after a successful build).
+#
+# Confirm the home project publish flag is on. osc getbinaries reads the build
+# backend, so attachments do not wait on download.opensuse.org.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to attach OBS binaries to (vX.Y.Z)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  OBS_PROJECT: home:fritz-fritz
+  OBS_PACKAGE: am5-spd-diag
+  OBS_DOWNLOAD: https://software.opensuse.org/download/package?package=am5-spd-diag&project=home:fritz-fritz
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: am5-spd-diag
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: am5-spd-diag
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve tag
+        id: ver
+        working-directory: .
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          case "$tag" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "tag must be vX.Y.Z (got $tag)" >&2; exit 1 ;;
+          esac
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install build deps
+        working-directory: .
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev pkg-config python3 osc
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check versions match tag
+        run: python3 scripts/bump_version.py --check "${{ steps.ver.outputs.version }}"
+
+      - name: Test
+        run: make test
+
+      - name: Dist
+        run: |
+          make dist
+          # Makefile writes the tarball next to the checkout directory.
+          cp -f "../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz" .
+
+      - name: Configure osc
+        working-directory: .
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+        run: |
+          if [ -z "$OBS_USER" ] || [ -z "$OBS_PASSWORD" ]; then
+            echo "OBS_USER and OBS_PASSWORD secrets are required" >&2
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/oscrc" <<EOF
+          [general]
+          apiurl = https://api.opensuse.org
+          [https://api.opensuse.org]
+          user = $OBS_USER
+          pass = $OBS_PASSWORD
+          credentials_mgr_class = osc.credentials.PlaintextConfigFileCredentialsManager
+          EOF
+          chmod 600 "$RUNNER_TEMP/oscrc"
+
+      - name: Commit sources to OBS
+        if: github.event_name == 'push'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          osc="osc -c $RUNNER_TEMP/oscrc"
+          src="$PWD"
+          pkg="$RUNNER_TEMP/obs-pkg"
+          $osc checkout "$OBS_PROJECT" "$OBS_PACKAGE" -o "$pkg"
+          cp -f "$src/$OBS_PACKAGE-$VERSION.tar.xz" "$pkg/"
+          cp -f "$src/$OBS_PACKAGE.spec" "$src/$OBS_PACKAGE.changes" "$src/$OBS_PACKAGE.dsc" "$pkg/"
+          cp -f "$src"/debian.control "$src"/debian.changelog "$src"/debian.rules \
+            "$src"/debian.compat "$src"/debian.copyright "$pkg/"
+          (
+            cd "$pkg"
+            for old in "$OBS_PACKAGE"-*.tar.xz; do
+              [ -e "$old" ] || continue
+              [ "$old" = "$OBS_PACKAGE-$VERSION.tar.xz" ] && continue
+              $osc rm --force "$old" || rm -f "$old"
+            done
+            $osc add "$OBS_PACKAGE-$VERSION.tar.xz" || true
+            $osc commit -m "Release $VERSION from $GITHUB_SHA"
+          )
+
+      - name: Wait for OBS binaries
+        run: |
+          python3 scripts/obs_wait.py \
+            --config "$RUNNER_TEMP/oscrc" \
+            --project "$OBS_PROJECT" \
+            --package "$OBS_PACKAGE" \
+            --version "${{ steps.ver.outputs.version }}"
+
+      - name: Collect OBS binaries
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          dest="$RUNNER_TEMP/obs-bins"
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir -p "$dest" "$assets"
+          python3 scripts/obs_wait.py \
+            --config "$RUNNER_TEMP/oscrc" \
+            --project "$OBS_PROJECT" \
+            --package "$OBS_PACKAGE" \
+            --version "$VERSION" \
+            --getbinaries "$dest"
+          find "$dest" -type f \( -name '*.rpm' -o -name '*.deb' \) | while read -r f; do
+            base=$(basename "$f")
+            case "$base" in
+              *.src.rpm|*debuginfo*|*debugsource*|*dbgsym*) continue ;;
+            esac
+            case "$base" in
+              *"$VERSION"*) ;;
+              *) continue ;;
+            esac
+            rel=${f#"$dest"/}
+            repo=${rel%%/*}
+            ext=${base##*.}
+            stem=${base%.*}
+            cp -f "$f" "$assets/${stem}.${repo}.${ext}"
+          done
+          cp -f "$OBS_PACKAGE-$VERSION.tar.xz" "$assets/"
+          count=$(find "$assets" -type f | wc -l)
+          echo "Collected $count release assets:"
+          ls -l "$assets"
+          if [ "$count" -lt 2 ]; then
+            echo "expected source tarball plus at least one OBS package" >&2
+            exit 1
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          REPO: ${{ github.repository }}
+        working-directory: .
+        run: |
+          tarball="am5-spd-diag/am5-spd-diag-$VERSION.tar.xz"
+          sha256=$(sha256sum "$tarball" | awk '{print $1}')
+          notes=$(python3 am5-spd-diag/scripts/release_notes.py \
+            --version "$VERSION" \
+            --sha256 "$sha256" \
+            --download "$OBS_DOWNLOAD" \
+            --changes am5-spd-diag/am5-spd-diag.changes)
+          assets=("$RUNNER_TEMP"/release-assets/*)
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --repo "$REPO" --clobber
+            gh release edit "$TAG" --repo "$REPO" --notes "$notes"
+          else
+            gh release create "$TAG" "${assets[@]}" --repo "$REPO" --title "$TAG" --notes "$notes"
+          fi

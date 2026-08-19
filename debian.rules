@@ -1,14 +1,15 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
+export CARGO_HOME = $(CURDIR)/.cargo-home
 
 %:
 	dh $@
 
 override_dh_auto_build:
-	true
+	$(MAKE) build
 
 override_dh_auto_test:
-	$(MAKE) test-tool
+	$(MAKE) test
 
 override_dh_auto_install:
 	$(MAKE) DESTDIR=$(CURDIR)/debian/am5-spd-diag PREFIX=/usr install

@@ -164,7 +164,7 @@ def write_event(
         "sleep_type": sleep_type,
         "flags": flags,
         "alert": alert,
-        "dir": str(d),
+        "dir": f"events/{d.name}",
         "boot_kind": boot_kind,
         "hub_stuck": "yes" if alert else "no",
     }

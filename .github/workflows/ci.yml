@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+    tags-ignore:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev pkg-config python3
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Check packaging versions agree
+        run: python3 scripts/bump_version.py --check
+
+      - name: Test
+        run: make test

@@ -4,7 +4,7 @@
  "http://www.freedesktop.org/standards/PolicyKit/1.0/policyconfig.dtd">
 <policyconfig>
   <vendor>am5-spd-diag</vendor>
-  <vendor_url>https://build.opensuse.org/package/show/home:fritz-fritz/am5-spd-diag</vendor_url>
+  <vendor_url>https://github.com/fritz-fritz/am5-spd-diag</vendor_url>
   <icon_name>computer</icon_name>
   <action id="org.opensuse.am5-spd-diag.snapshot">
     <description>Capture AM5 SPD/DIMM evidence</description>
@@ -14,9 +14,35 @@
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>auth_admin_keep</allow_active>
+      <allow_active>yes</allow_active>
     </defaults>
     <annotate key="org.freedesktop.policykit.exec.path">@HELPER@</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+  <action id="org.opensuse.am5-spd-diag.probe">
+    <description>Read AM5 SPD5118 hub registers</description>
+    <description xml:lang="en">Read AM5 SPD5118 hub registers</description>
+    <message>Authentication is required to read SPD5118 MR11 on host SMBus</message>
+    <message xml:lang="en">Authentication is required to read SPD5118 MR11 on host SMBus</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>yes</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXEC@/pkexec-probe</annotate>
+    <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
+  </action>
+  <action id="org.opensuse.am5-spd-diag.recover">
+    <description>Experimental in-band SPD5118 MR11 fix</description>
+    <description xml:lang="en">Experimental in-band SPD5118 MR11 fix</description>
+    <message>Authentication is required to write SPD5118 MR11 (experimental fix; a warm reboot is still required)</message>
+    <message xml:lang="en">Authentication is required to write SPD5118 MR11 (experimental fix; a warm reboot is still required)</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@LIBEXEC@/pkexec-recover</annotate>
     <annotate key="org.freedesktop.policykit.exec.allow_gui">true</annotate>
   </action>
 </policyconfig>

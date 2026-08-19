@@ -1,21 +1,22 @@
 [Desktop Entry]
 Type=Application
-Name=AM5 SPD diagnostics
-Comment=AMD AM5 DDR5 SPD hub diagnostics
-Exec=@LIBEXEC@/notify-app --status
-Icon=dialog-warning
+Name=Ghost DIMM
+Comment=Check memory identity after sleep on AMD AM5
+Exec=@LIBEXEC@/am5-spd-diag-notify --status
+TryExec=@LIBEXEC@/am5-spd-diag-notify
+Icon=org.opensuse.am5spdDiag
 Terminal=false
-NoDisplay=true
-StartupNotify=false
+StartupNotify=true
 Categories=System;Monitor;
+Keywords=AMD;AM5;DDR5;SPD;DIMM;memory;AGESA;
 DBusActivatable=true
 X-GNOME-UsesNotifications=true
 Actions=analyze;report;
 
 [Desktop Action analyze]
 Name=Analyze
-Exec=@LIBEXEC@/notify-app --analyze
+Exec=@LIBEXEC@/am5-spd-diag-notify --analyze
 
 [Desktop Action report]
 Name=Report
-Exec=@LIBEXEC@/notify-app --report
+Exec=@LIBEXEC@/am5-spd-diag-notify --report

@@ -1,0 +1,21 @@
+[package]
+name = "am5-spd-diag-notify"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Desktop notification waiter and GTK results window for am5-spd-diag"
+
+[[bin]]
+name = "am5-spd-diag-notify"
+path = "src/main.rs"
+
+[dependencies]
+am5-spd-diag = { path = "../am5-spd-diag" }
+gdk4-wayland = "0.10"
+gtk4 = { version = "0.10", features = ["v4_10"] }
+pulldown-cmark = "0.13"
+serde_json = "1"
+zbus = "5"

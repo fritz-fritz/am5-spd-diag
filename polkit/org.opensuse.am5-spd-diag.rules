@@ -1,0 +1,11 @@
+// Passwordless snapshot and probe for a local active session.
+// Fix still uses the action defaults (admin authentication).
+polkit.addRule(function (action, subject) {
+    if (!subject.local || !subject.active) {
+        return polkit.Result.NOTHING;
+    }
+    if (action.id === "org.opensuse.am5-spd-diag.snapshot" ||
+        action.id === "org.opensuse.am5-spd-diag.probe") {
+        return polkit.Result.YES;
+    }
+});

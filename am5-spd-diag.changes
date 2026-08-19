@@ -1,4 +1,37 @@
 -------------------------------------------------------------------
+Wed Aug 19 09:41:02 UTC 2026 - Fritz <code@fritztech.net>
+
+- First stable release (Rust rewrite of the Python/bash tool).
+
+-------------------------------------------------------------------
+Wed Aug 19 08:40:00 UTC 2026 - Fritz <code@fritztech.net>
+
+- Show Ghost DIMM as the desktop notice sender (keep the D-Bus app id).
+- Rename the in-band command to fix; keep recover as an alias. CLI fix
+  uses pkexec like Probe. A successful clear no longer re-fires the
+  corruption notice.
+- Run make test in RPM %check and Debian dh_auto_test so OBS builds
+  both package types.
+
+-------------------------------------------------------------------
+Tue Aug 18 16:00:00 UTC 2026 - Fritz <code@fritztech.net>
+
+- Add an application icon and a visible desktop launcher for the GTK
+  window. Corruption notices still use dialog-warning as the main
+  image; the logo comes from the desktop file.
+- Reply to D-Bus Activate before closing the session name so Plasma
+  does not show "Launching AM5 SPD diagnostics (Failed)" on menu start.
+
+-------------------------------------------------------------------
+Tue Aug 18 09:00:00 UTC 2026 - Fritz <code@fritztech.net>
+
+- Rewrite the tool in Rust: one x86_64 CLI binary plus a GTK notify
+  window. Capture schema, systemd units, and D-Bus app id are unchanged.
+- Drop Python/bash runtime helpers and the terminal launcher. Notification
+  clicks open am5-spd-diag-notify. Package is ExclusiveArch x86_64 with
+  vendored Cargo crates and gtk4-devel.
+
+-------------------------------------------------------------------
 Mon Aug 17 21:24:00 UTC 2026 - Fritz <code@fritztech.net>
 
 - Derive Debian changelog from am5-spd-diag.changes so RPM and Debian

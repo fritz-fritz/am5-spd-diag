@@ -1,5 +1,22 @@
-am5-spd-diag (0.1.0-1) unstable; urgency=medium
+am5-spd-diag (1.0.0-1) unstable; urgency=medium
 
+  * First stable release (Rust rewrite of the Python/bash tool).
+  * Show Ghost DIMM as the desktop notice sender (keep the D-Bus app id).
+  * Rename the in-band command to fix; keep recover as an alias. CLI fix
+    uses pkexec like Probe. A successful clear no longer re-fires the
+    corruption notice.
+  * Run make test in RPM %check and Debian dh_auto_test so OBS builds both
+    package types.
+  * Add an application icon and a visible desktop launcher for the GTK
+    window. Corruption notices still use dialog-warning as the main image;
+    the logo comes from the desktop file.
+  * Reply to D-Bus Activate before closing the session name so Plasma does
+    not show "Launching AM5 SPD diagnostics (Failed)" on menu start.
+  * Rewrite the tool in Rust: one x86_64 CLI binary plus a GTK notify
+    window. Capture schema, systemd units, and D-Bus app id are unchanged.
+  * Drop Python/bash runtime helpers and the terminal launcher. Notification
+    clicks open am5-spd-diag-notify. Package is ExclusiveArch x86_64 with
+    vendored Cargo crates and gtk4-devel.
   * Derive Debian changelog from am5-spd-diag.changes so RPM and Debian
     packages share the same history.
   * Fix Debian package metadata (maintainer, description, copyright,
@@ -12,4 +29,4 @@ am5-spd-diag (0.1.0-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Mon, 17 Aug 2026 21:24:00 +0000
+ -- Fritz <code@fritztech.net>  Wed, 19 Aug 2026 09:41:02 +0000

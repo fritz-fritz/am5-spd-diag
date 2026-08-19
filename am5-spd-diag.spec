@@ -12,28 +12,32 @@
 # license that conforms to the Open Source Definition (Version 1.9)
 # published by the Open Source Initiative.
 
-# Please submit bugfixes or comments via https://bugs.opensuse.org/
+# Please submit bugfixes or comments via https://github.com/fritz-fritz/am5-spd-diag/issues
 #
 
 
 Name:           am5-spd-diag
-Version:        0.1.0
+Version:        1.0.0
 Release:        0
 Summary:        AM5 DDR5 SPD hub diagnostics after sleep/warm reboot
 License:        MIT
 Group:          System/Monitoring
-URL:            https://build.opensuse.org/package/show/home:fritz-fritz/am5-spd-diag
+URL:            https://github.com/fritz-fritz/am5-spd-diag
 Source0:        %{name}-%{version}.tar.xz
-BuildArch:      noarch
+ExclusiveArch:  x86_64
+BuildRequires:  cargo
+BuildRequires:  gcc
+BuildRequires:  gtk4-devel
 BuildRequires:  make
+BuildRequires:  pkgconfig
+BuildRequires:  pkgconfig(gtk4)
+BuildRequires:  python3
+BuildRequires:  rust
 BuildRequires:  systemd-rpm-macros
-Requires:       python3-base
 Requires:       systemd
 Recommends:     dmidecode
 Recommends:     i2c-tools
 Recommends:     polkit
-Recommends:     glow
-Recommends:     python3-gobject
 Requires(post): systemd
 Requires(preun): systemd
 Requires(postun): systemd
@@ -48,11 +52,17 @@ removed.
 %setup -q
 
 %build
-# nothing to compile
+# Source tarball includes vendor/ and .cargo/config.toml from `make dist`.
+export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
+%make_build
 
 %install
 # openSUSE %{_docdir} is /usr/share/doc/packages; Fedora is /usr/share/doc.
 %make_install PREFIX=%{_prefix} DOCDIR=%{_docdir}/%{name}
+
+%check
+export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
+%make_build test
 
 %preun
 %systemd_preun am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
@@ -70,16 +80,18 @@ removed.
 %doc %{_docdir}/%{name}/README.md
 %{_bindir}/am5-spd-diag
 %dir %{_libexecdir}/am5-spd-diag
-%{_libexecdir}/am5-spd-diag/capture.sh
-%{_libexecdir}/am5-spd-diag/analyze.py
-%{_libexecdir}/am5-spd-diag/spd_hub.py
 %{_libexecdir}/am5-spd-diag/pkexec-snapshot
-%{_libexecdir}/am5-spd-diag/open-term
-%{_libexecdir}/am5-spd-diag/notify-app
+%{_libexecdir}/am5-spd-diag/pkexec-probe
+%{_libexecdir}/am5-spd-diag/pkexec-recover
+%{_libexecdir}/am5-spd-diag/am5-spd-diag-notify
 %{_datadir}/am5-spd-diag/
 %{_datadir}/applications/org.opensuse.am5spdDiag.desktop
+%{_datadir}/icons/hicolor/48x48/apps/org.opensuse.am5spdDiag.png
+%{_datadir}/icons/hicolor/128x128/apps/org.opensuse.am5spdDiag.png
+%{_datadir}/icons/hicolor/256x256/apps/org.opensuse.am5spdDiag.png
 %{_datadir}/dbus-1/services/org.opensuse.am5spdDiag.service
 %{_datadir}/polkit-1/actions/org.opensuse.am5-spd-diag.snapshot.policy
+%{_datadir}/polkit-1/rules.d/org.opensuse.am5-spd-diag.rules
 %{_unitdir}/am5-spd-diag.service
 %{_unitdir}/am5-spd-diag-pre-sleep.service
 %{_unitdir}/am5-spd-diag-post-sleep.service
@@ -91,21 +103,46 @@ removed.
 %config(noreplace) %{_sysconfdir}/am5-spd-diag.conf
 
 %changelog
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 0.1.0
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.0
+- First stable release (Rust rewrite of the Python/bash tool).
+
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.0
+- Show Ghost DIMM as the desktop notice sender (keep the D-Bus app id).
+- Rename the in-band command to fix; keep recover as an alias. CLI fix uses
+  pkexec like Probe. A successful clear no longer re-fires the corruption
+  notice.
+- Run make test in RPM %%check and Debian dh_auto_test so OBS builds both
+  package types.
+
+* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.0
+- Add an application icon and a visible desktop launcher for the GTK window.
+  Corruption notices still use dialog-warning as the main image; the logo
+  comes from the desktop file.
+- Reply to D-Bus Activate before closing the session name so Plasma does not
+  show "Launching AM5 SPD diagnostics (Failed)" on menu start.
+
+* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.0
+- Rewrite the tool in Rust: one x86_64 CLI binary plus a GTK notify window.
+  Capture schema, systemd units, and D-Bus app id are unchanged.
+- Drop Python/bash runtime helpers and the terminal launcher. Notification
+  clicks open am5-spd-diag-notify. Package is ExclusiveArch x86_64 with
+  vendored Cargo crates and gtk4-devel.
+
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
 - Derive Debian changelog from am5-spd-diag.changes so RPM and Debian
   packages share the same history.
 - Fix Debian package metadata (maintainer, description, copyright, Homepage,
   and recommends).
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 0.1.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
 - Own /usr/lib/systemd/system-sleep so openSUSE post-build-checks does not
   fail. Drop duplicate share-dir listing.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 0.1.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
 - Install docs into %%{_docdir} so openSUSE finds LICENSE/README.
 - Add Debian/Ubuntu OBS sources (dsc + debian.*) so those repos are not
   excluded.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 0.1.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
 - Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
   reboot.

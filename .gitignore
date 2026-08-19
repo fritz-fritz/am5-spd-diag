@@ -8,3 +8,7 @@ debian/.debhelper/
 debian/files
 debian/*.substvars
 tests/fixture/reports/
+/target/
+/vendor/
+.cargo/config.toml
+.cargo-home/
