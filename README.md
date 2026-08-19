@@ -1,3 +1,5 @@
+<img align="left" width="256px" height="256px" alt="ghost-peek" src="https://github.com/user-attachments/assets/71333b9e-7a2d-4337-a7e2-f520c825a3c7" />
+
 # Ghost DIMM
 
 **Your DDR5 is fine. Firmware made a ghost.**  
