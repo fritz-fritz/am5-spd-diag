@@ -60,8 +60,7 @@ test-packaging:
 	python3 tests/test_bump_version.py
 	python3 scripts/bump_version.py --check
 	python3 -m py_compile scripts/bump_version.py scripts/gen_changelogs.py \
-	  scripts/obs_wait.py scripts/obs_release.py scripts/obs_trigger.py \
-	  scripts/release_notes.py
+	  scripts/obs_wait.py scripts/obs_release.py scripts/release_notes.py
 	python3 scripts/release_notes.py --version dummy --sha256 deadbeef | grep -q 'OBS download page'
 	if [ -f am5-spd-diag.changes ]; then python3 scripts/gen_changelogs.py --check; fi
 	if [ -d debian ]; then \
