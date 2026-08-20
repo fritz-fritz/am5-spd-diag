@@ -11,8 +11,11 @@ from collections import defaultdict
 
 SKIP = {"disabled", "excluded", "unresolvable"}
 BAD = {"failed", "broken"}
-DONE = {"succeeded"}
-LIVE = {"scheduled", "dispatching", "building", "blocked", "signing", "finished"}
+# OBS reports `finished` (then `signing`) after the worker job completes. The
+# web UI already shows succeeded at that point; binaries may still be absent
+# from the listing until publish finishes. Treat those codes as built, not live.
+DONE = {"succeeded", "finished", "signing"}
+LIVE = {"scheduled", "dispatching", "building", "blocked"}
 
 
 def osc(config: str | None, *args: str) -> str:
@@ -112,12 +115,20 @@ def snapshot(
         if code in BAD:
             failed.append(label)
             continue
-        if code in DONE and any(
-            is_payload(name, version) for name in binary_names(config, project, package, repo, arch)
-        ):
+        if code in LIVE:
+            pending.append(label)
+            continue
+        has_payload = any(
+            is_payload(name, version)
+            for name in binary_names(config, project, package, repo, arch)
+        )
+        if has_payload:
             ready.append(label)
             continue
-        pending.append(label)
+        if code in DONE:
+            pending.append(f"{repo}/{arch}: binaries not listed yet")
+        else:
+            pending.append(label)
     return pending, failed, skipped, ready
 
 
@@ -149,9 +160,10 @@ def download_binaries(
         if config:
             cmd.extend(["-c", config])
         cmd.extend(["getbinaries", project, package, repo, arch, "-d", target])
+        print(f"collect: {repo}/{arch} -> {target}", flush=True)
         subprocess.check_call(cmd)
         count += 1
-        print(f"downloaded {repo}/{arch}")
+        print(f"downloaded {repo}/{arch}", flush=True)
     if count == 0:
         print("obs_wait: no repositories to download", file=sys.stderr)
         return 1

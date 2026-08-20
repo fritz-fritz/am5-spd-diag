@@ -213,7 +213,14 @@ def test_obs_wait_payload() -> None:
     assert wait.classify_codes(["succeeded", "building"]) == "building"
     assert wait.classify_codes(["succeeded", "excluded"]) == "excluded"
     assert wait.classify_codes(["failed"]) == "failed"
+    # OBS reports finished/signing after the worker job; the web UI already
+    # shows succeeded. Those must not be treated as still building.
+    assert wait.classify_codes(["finished"]) == "succeeded"
+    assert wait.classify_codes(["signing"]) == "succeeded"
+    assert wait.classify_codes(["succeeded", "finished"]) == "succeeded"
+    assert wait.classify_codes(["finished", "building"]) == "building"
     assert wait.finished_ok(["tw/x86_64: building"], []) is None
+    assert wait.finished_ok(["tw/x86_64: binaries not listed yet"], []) is None
     assert wait.finished_ok([], ["tw/x86_64: succeeded"]) is True
     assert wait.finished_ok([], []) is False
     assert wait.finished_ok([], [], ["tw/x86_64: failed"]) is None
@@ -228,6 +235,39 @@ def test_obs_wait_payload() -> None:
         ("Debian_12", "x86_64", "unresolvable"),
         ("openSUSE_Tumbleweed", "x86_64", "building"),
     ]
+    assert wait.collapse_results(
+        [
+            ("Fedora_44", "x86_64", "finished"),
+            ("Fedora_43", "x86_64", "building"),
+        ]
+    ) == [
+        ("Fedora_44", "x86_64", "succeeded"),
+        ("Fedora_43", "x86_64", "building"),
+    ]
+
+    orig_results = wait.results
+    orig_names = wait.binary_names
+    wait.results = lambda *_a, **_k: [
+        ("Fedora_44", "x86_64", "succeeded"),
+        ("Fedora_43", "x86_64", "building"),
+    ]
+    wait.binary_names = lambda *_a, **_k: ["am5-spd-diag-1.0.1-0.x86_64.rpm"]
+    try:
+        pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
+        assert failed == []
+        assert skipped == []
+        assert ready == ["Fedora_44/x86_64: succeeded"]
+        assert pending == ["Fedora_43/x86_64: building"]
+        wait.binary_names = lambda *_a, **_k: []
+        pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
+        assert ready == []
+        assert pending == [
+            "Fedora_44/x86_64: binaries not listed yet",
+            "Fedora_43/x86_64: building",
+        ]
+    finally:
+        wait.results = orig_results
+        wait.binary_names = orig_names
 
 
 def test_obs_release_gate() -> None:
