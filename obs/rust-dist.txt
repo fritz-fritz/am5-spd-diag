@@ -1,0 +1,12 @@
+# Official standalone rustc used as OBS Source2 (build-time only).
+# The compiler is built against old glibc (~2.17) so it runs on Ubuntu 24.04,
+# Debian 12, Debian 13, Fedora 43, and Leap 16. Each OBS chroot still links
+# the *output* binary against that distro's glibc and GTK.
+# make dist does not download this. GHA and `make osc-fetch-rust` do.
+#
+# rust-toolchain.toml is the pin Dependabot bumps. sync_rust_pin.sh copies
+# that channel into VERSION, URL, SHA256, Cargo.toml rust-version, and spec
+# Source2. CI/Release parse the channel and pass it to dtolnay/rust-toolchain.
+VERSION=1.97.1
+URL=https://static.rust-lang.org/dist/rust-1.97.1-x86_64-unknown-linux-gnu.tar.xz
+SHA256=88f28fa9af20594179f85d6df67078dfd6fa93e2f6da5e1e9b0ac4997988ca4f

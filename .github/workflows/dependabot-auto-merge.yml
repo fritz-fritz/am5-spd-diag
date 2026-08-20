@@ -4,6 +4,10 @@
 # `gh pr merge --auto` requires Settings → Pull Requests → Allow auto-merge.
 # This repo keeps that off, so we wait for the CI job named `test` and then
 # squash-merge (Protect Main allows squash only).
+#
+# When Dependabot bumps rust-toolchain.toml, sync the OBS rustc tarball
+# and rust-version on this PR before waiting for CI. GITHUB_TOKEN pushes
+# do not retrigger workflows, so dispatch CI onto the new HEAD.
 
 name: Dependabot auto-merge
 
@@ -13,6 +17,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 concurrency:
   group: dependabot-auto-merge-${{ github.event.pull_request.number }}
@@ -23,25 +28,56 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'fritz-fritz/am5-spd-diag'
     steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Sync OBS rust pin with rust-toolchain.toml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/sync_rust_pin.sh
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "rust pin already in sync"
+            exit 0
+          fi
+          git add rust-toolchain.toml Cargo.toml obs/rust-dist.txt am5-spd-diag.spec
+          git commit -m "Sync OBS rustc pin with rust-toolchain.toml"
+          git push origin "HEAD:$HEAD_REF"
+          gh workflow run CI --ref "$HEAD_REF"
+
       - name: Wait for CI and squash-merge
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           deadline=$((SECONDS + 2400))
 
+          check_test() {
+            sha=$1
+            gh api "repos/$REPO/commits/$sha/check-runs" \
+              --jq '[.check_runs[] | select(.name == "test" or .name == "CI / test")]
+                    | first | .conclusion // .status // "pending"'
+          }
+
           ci_ok=0
           while (( SECONDS < deadline )); do
-            bucket=$(gh pr checks "$PR_URL" --json name,bucket \
-              --jq '[.[] | select(.name == "test")] | first | .bucket // "pending"')
-            echo "CI test: $bucket"
+            sha=$(gh pr view "$PR_URL" --json headRefOid --jq .headRefOid)
+            bucket=$(check_test "$sha")
+            echo "HEAD $sha CI test: $bucket"
             case "$bucket" in
-              fail)
-                echo "CI test failed" >&2
+              failure|cancelled|timed_out|startup_failure|stale)
+                echo "CI test failed ($bucket)" >&2
                 exit 1
                 ;;
-              pass)
+              success)
                 ci_ok=1
                 break
                 ;;

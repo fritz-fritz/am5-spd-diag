@@ -1,5 +1,6 @@
 .osc/
 *.tar.xz
+*.tar.zst
 *.tar.gz
 __pycache__/
 *.pyc

@@ -9,7 +9,15 @@ updates:
         patterns:
           - "gtk4*"
           - "gdk4*"
+  # rust-toolchain.toml is the rustc pin. Auto-merge runs sync_rust_pin.sh
+  # so OBS Source2, rust-version, and spec Source2 follow the same PR.
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain

@@ -1,0 +1,18 @@
+<package name="am5-spd-diag" project="home:fritz-fritz">
+  <title>AM5 SPD Diagnostic Tool</title>
+  <description>AM5 motherboards seem to have a sleep/wake memory corruption problem.
+  	This tool leverages systemd to generate reports which can be used to diagnose
+	  the behavior. It is believed to be SPD corruption and has been reproduced on
+	  a mix of vendor hardware.</description>
+  <build>
+    <disable repository="xUbuntu_25.10"/>
+    <disable repository="xUbuntu_25.04"/>
+    <disable repository="xUbuntu_24.10"/>
+    <disable repository="Fedora_Rawhide"/>
+    <disable repository="AppImage"/>
+    <disable arch="i586"/>
+    <disable arch="aarch64"/>
+    <disable arch="armv7l"/>
+    <disable arch="riscv64"/>
+  </build>
+</package>

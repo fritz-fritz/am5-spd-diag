@@ -279,6 +279,59 @@ def test_dist_keeps_packaging_metadata_in_source0() -> None:
     assert (ROOT / "debian/changelog").is_file()
 
 
+def test_dist_splits_vendor_and_skips_rustc() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    dist = makefile.split("\ndist:", 1)[1].split("\n\n", 1)[0]
+    assert "-vendor.tar.zst" in dist
+    assert "rm -rf" in dist
+    assert "vendor" in dist
+    assert "'/vendor/'" in dist or '"/vendor/"' in dist or "/vendor/" in dist
+    assert "static.rust-lang.org" not in dist
+    assert "osc-fetch-rust" in makefile
+    assert (ROOT / "obs/rust-dist.txt").is_file()
+    assert (ROOT / "rust-toolchain.toml").is_file()
+    import check_rust_pin
+
+    assert check_rust_pin.main() == 0
+    pin = (ROOT / "obs/rust-dist.txt").read_text(encoding="utf-8")
+    assert "https://static.rust-lang.org/dist/rust-" in pin
+    assert "VERSION=" in pin
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "dtolnay/rust-toolchain@stable" not in ci
+    assert "dtolnay/rust-toolchain@stable" not in release
+    assert "dtolnay/rust-toolchain@1." not in ci
+    assert "dtolnay/rust-toolchain@1." not in release
+    assert "toolchain: ${{ steps.rust.outputs.version }}" in ci
+    assert "toolchain: ${{ steps.rust.outputs.version }}" in release
+    assert "rust_pin.sh channel" in ci
+    assert "rust_pin.sh channel" in release
+    assert "package-ecosystem: rust-toolchain" in (
+        ROOT / ".github/dependabot.yml"
+    ).read_text(encoding="utf-8")
+    assert "needs.gate.outputs.obs" in release
+    assert "ahead_by" in release
+    assert "github.event_name == 'push' || inputs.commit_obs" not in release
+
+
+def test_obs_package_meta_disables_eol_repos() -> None:
+    meta = (ROOT / "obs/package-meta.xml").read_text(encoding="utf-8")
+    for repo in (
+        "xUbuntu_25.10",
+        "xUbuntu_25.04",
+        "xUbuntu_24.10",
+        "Fedora_Rawhide",
+        "AppImage",
+    ):
+        assert f'repository="{repo}"' in meta
+    assert 'repository="Debian_12"' not in meta
+    prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
+    assert "Prefer: libselinux-dev" in prjconf
+    assert "Prefer: libjpeg-dev" in prjconf
+    fmt = (ROOT / "debian/source/format").read_text(encoding="utf-8").strip()
+    assert fmt == "1.0", fmt
+
+
 def _write_tree(root: Path) -> None:
     (root / "man").mkdir()
     (root / "Cargo.toml").write_text(CARGO, encoding="utf-8")
@@ -301,4 +354,6 @@ if __name__ == "__main__":
     test_obs_release_gate()
     test_release_notes_mentions_obs()
     test_dist_keeps_packaging_metadata_in_source0()
+    test_dist_splits_vendor_and_skips_rustc()
+    test_obs_package_meta_disables_eol_repos()
     print("ok")

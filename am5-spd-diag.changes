@@ -1,4 +1,19 @@
 -------------------------------------------------------------------
+Thu Aug 20 13:04:18 UTC 2026 - Fritz <code@fritztech.net>
+
+- Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer;
+  keep MessageDialog on Debian 12 (GTK 4.8). Fix the header-bar icon
+  search path so the app icon loads from the source tree.
+
+-------------------------------------------------------------------
+Thu Aug 20 10:50:13 UTC 2026 - Fritz <code@fritztech.net>
+
+- Split OBS sources and pin official rustc from rust-toolchain.toml so
+  older distros can build. Dependabot bumps the toolchain; OBS Source2
+  and CI follow that pin. GTK window targets GTK 4.8 so Debian 12
+  (oldstable) packages. Not a Ghost DIMM behavior change.
+
+-------------------------------------------------------------------
 Wed Aug 19 12:30:00 UTC 2026 - Fritz <code@fritztech.net>
 
 - Make /var/log/am5-spd-diag 0755 root:root and write capture state

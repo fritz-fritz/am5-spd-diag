@@ -1,9 +1,16 @@
 #!/usr/bin/make -f
 export DH_VERBOSE = 1
 export CARGO_HOME = $(CURDIR)/.cargo-home
+# Official rustc install prefix (no ':' — rustc rejects that in library paths).
+export PATH := /tmp/am5-rust/bin:$(PATH)
 
 %:
 	dh $@
+
+override_dh_auto_configure:
+	# Extract vendor after dh_clean so vendor/*/Cargo.toml.orig is not deleted.
+	$(CURDIR)/scripts/obs_prep.sh
+	dh_auto_configure
 
 override_dh_auto_build:
 	$(MAKE) build

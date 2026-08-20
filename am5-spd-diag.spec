@@ -17,13 +17,16 @@
 
 
 Name:           am5-spd-diag
-Version:        1.0.0
+Version:        1.0.1
 Release:        0
 Summary:        AM5 DDR5 SPD hub diagnostics after sleep/warm reboot
 License:        MIT
 Group:          System/Monitoring
 URL:            https://github.com/fritz-fritz/am5-spd-diag
 Source0:        %{name}-%{version}.tar.xz
+Source1:        %{name}-%{version}-vendor.tar.zst
+# Official rustc (build-time only). Version is obs/rust-dist.txt.
+Source2:        rust-1.97.1-x86_64-unknown-linux-gnu.tar.xz
 ExclusiveArch:  x86_64
 BuildRequires:  cargo
 BuildRequires:  gcc
@@ -34,6 +37,8 @@ BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  python3
 BuildRequires:  rust
 BuildRequires:  systemd-rpm-macros
+BuildRequires:  xz
+BuildRequires:  zstd
 Requires:       systemd
 Recommends:     dmidecode
 Recommends:     i2c-tools
@@ -52,7 +57,10 @@ removed.
 %setup -q
 
 %build
-# Source tarball includes vendor/ and .cargo/config.toml from `make dist`.
+# Source0 has no vendor/. Extract Source1 and install Source2 rustc to
+# /tmp/am5-rust (path without ':') so every OBS chroot uses the pinned rustc.
+sh %{_builddir}/%{name}-%{version}/scripts/obs_prep.sh %{SOURCE1} %{SOURCE2}
+export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_build
 
@@ -61,6 +69,7 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_install PREFIX=%{_prefix} DOCDIR=%{_docdir}/%{name}
 
 %check
+export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_build test
 
@@ -90,7 +99,11 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %{_datadir}/icons/hicolor/128x128/apps/org.opensuse.am5spdDiag.png
 %{_datadir}/icons/hicolor/256x256/apps/org.opensuse.am5spdDiag.png
 %{_datadir}/dbus-1/services/org.opensuse.am5spdDiag.service
+# Leap 16 does not own these directories on the polkit package.
+%dir %{_datadir}/polkit-1
+%dir %{_datadir}/polkit-1/actions
 %{_datadir}/polkit-1/actions/org.opensuse.am5-spd-diag.snapshot.policy
+%dir %{_datadir}/polkit-1/rules.d
 %{_datadir}/polkit-1/rules.d/org.opensuse.am5-spd-diag.rules
 %{_unitdir}/am5-spd-diag.service
 %{_unitdir}/am5-spd-diag-pre-sleep.service
@@ -103,7 +116,18 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %config(noreplace) %{_sysconfdir}/am5-spd-diag.conf
 
 %changelog
-* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.0
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
+- Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer; keep
+  MessageDialog on Debian 12 (GTK 4.8). Fix the header-bar icon search path
+  so the app icon loads from the source tree.
+
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
+- Split OBS sources and pin official rustc from rust-toolchain.toml so older
+  distros can build. Dependabot bumps the toolchain; OBS Source2 and CI
+  follow that pin. GTK window targets GTK 4.8 so Debian 12 (oldstable)
+  packages. Not a Ghost DIMM behavior change.
+
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
 - Make /var/log/am5-spd-diag 0755 root:root and write capture state with
   O_NOFOLLOW so a local user cannot symlink-swap passwordless snapshot into
   a root file write.
@@ -117,10 +141,10 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 - Return a real exit status from capture so report/package refuse stale
   evidence; systemd boot/sleep units stay best-effort.
 
-* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.0
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
 - First stable release (Rust rewrite of the Python/bash tool).
 
-* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.0
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
 - Show Ghost DIMM as the desktop notice sender (keep the D-Bus app id).
 - Rename the in-band command to fix; keep recover as an alias. CLI fix uses
   pkexec like Probe. A successful clear no longer re-fires the corruption
@@ -128,35 +152,35 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 - Run make test in RPM %%check and Debian dh_auto_test so OBS builds both
   package types.
 
-* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.0
+* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.1
 - Add an application icon and a visible desktop launcher for the GTK window.
   Corruption notices still use dialog-warning as the main image; the logo
   comes from the desktop file.
 - Reply to D-Bus Activate before closing the session name so Plasma does not
   show "Launching AM5 SPD diagnostics (Failed)" on menu start.
 
-* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.0
+* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.1
 - Rewrite the tool in Rust: one x86_64 CLI binary plus a GTK notify window.
   Capture schema, systemd units, and D-Bus app id are unchanged.
 - Drop Python/bash runtime helpers and the terminal launcher. Notification
   clicks open am5-spd-diag-notify. Package is ExclusiveArch x86_64 with
   vendored Cargo crates and gtk4-devel.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
 - Derive Debian changelog from am5-spd-diag.changes so RPM and Debian
   packages share the same history.
 - Fix Debian package metadata (maintainer, description, copyright, Homepage,
   and recommends).
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
 - Own /usr/lib/systemd/system-sleep so openSUSE post-build-checks does not
   fail. Drop duplicate share-dir listing.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
 - Install docs into %%{_docdir} so openSUSE finds LICENSE/README.
 - Add Debian/Ubuntu OBS sources (dsc + debian.*) so those repos are not
   excluded.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.0
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
 - Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
   reboot.

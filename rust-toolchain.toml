@@ -1,0 +1,6 @@
+# Dependabot package-ecosystem: rust-toolchain bumps channel.
+# scripts/sync_rust_pin.sh copies it to OBS Source2 and rust-version.
+# Workflows parse channel and pass it as dtolnay/rust-toolchain's toolchain.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
