@@ -17,6 +17,13 @@ OSC_WC=${OSC_WC:-/tmp/am5-spd-diag-osc-wc}
 DIST_PARENT=${DIST_PARENT:-$(cd "$ROOT/.." && pwd)}
 RUST_FILE=rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
 
+# Cursor (and other AppImage hosts) export APPIMAGE+OWD. osc's babysitter
+# then chdirs to OWD ($HOME), so `osc build` from a checkout fails with
+# "Directory '/home/…' is not a working copy".
+osc() {
+	env -u APPIMAGE -u OWD command osc "$@"
+}
+
 VERSION=$(awk '/^VERSION/{print $3; exit}' "$ROOT/Makefile")
 if [ -z "$VERSION" ]; then
 	printf 'osc_build: could not read VERSION from Makefile\n' >&2

@@ -359,5 +359,5 @@ osc-matrix: dist osc-fetch-rust
 	exit $$failed
 
 osc-meta:
-	osc meta prjconf home:fritz-fritz -F $(MAKEFILE_DIR)obs/prjconf
-	osc meta pkg home:fritz-fritz $(NAME) -F $(MAKEFILE_DIR)obs/package-meta.xml
+	env -u APPIMAGE -u OWD osc meta prjconf home:fritz-fritz -F $(MAKEFILE_DIR)obs/prjconf
+	env -u APPIMAGE -u OWD osc meta pkg home:fritz-fritz $(NAME) -F $(MAKEFILE_DIR)obs/package-meta.xml
