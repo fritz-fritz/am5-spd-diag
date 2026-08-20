@@ -439,8 +439,9 @@ def test_release_profile_and_rpmlint() -> None:
     assert "%service_add_pre am5-spd-diag.service" in spec
     assert re.search(r"^%pre\b", spec, re.MULTILINE)
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" in makefile
-    assert "$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" not in makefile
+    assert "ln -f $(DESTDIR)$(LIBEXECDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" in makefile
+    assert "ln -sf ../libexec/$(NAME)/$(NAME) $(DESTDIR)$(BINDIR)/$(NAME)" in makefile
+    assert "ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" not in makefile
     for rules in (
         (ROOT / "debian.rules").read_text(encoding="utf-8"),
         (ROOT / "debian" / "rules").read_text(encoding="utf-8"),
@@ -453,6 +454,7 @@ def test_release_profile_and_rpmlint() -> None:
         "polkit-file-unauthorized",
     ):
         assert check in rpmlintrc
+    assert "addFilter(" in rpmlintrc
     osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
     assert "$NAME.rpmlintrc" in osc_build
     release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
