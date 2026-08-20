@@ -21,7 +21,7 @@ RUST_FILE=rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
 # then chdirs to OWD ($HOME), so `osc build` from a checkout fails with
 # "Directory '/home/…' is not a working copy".
 osc() {
-	env -u APPIMAGE -u OWD command osc "$@"
+	env -u APPIMAGE -u OWD /usr/bin/osc "$@"
 }
 
 VERSION=$(awk '/^VERSION/{print $3; exit}' "$ROOT/Makefile")
