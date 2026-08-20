@@ -393,7 +393,7 @@ make build
 
 ## Credits
 
-- **[9950X3D](https://forum-en.msi.com/index.php?threads/ddr5-module-detected-as-2gb-ghost-dimm-after-s3-sleep-on-am5-root-cause-found.419787/)** — root cause, ABL/PEI disassembly, and the first documented in-band MR11 clear
+- **[MSI Forum's @9950X3D](https://forum-en.msi.com/index.php?threads/ddr5-module-detected-as-2gb-ghost-dimm-after-s3-sleep-on-am5-root-cause-found.419787/)** — root cause, ABL/PEI disassembly, and the first documented in-band MR11 clear
 - [Level1Techs thread 229940](https://forum.level1techs.com/t/am5-linux-triggering-suspected-firmware-bug-with-s3-sleep/229940) — early multi-vendor symptom reports
 - [Guenter Roeck, `spd5118`](https://github.com/torvalds/linux/commit/a852162efbff611ed49ae61a141e80c81689d54c) — 2024 note that some BIOS versions leave the hub in 2-byte (16-bit) addressing across a soft reboot, and that only a power cycle resets it
 
