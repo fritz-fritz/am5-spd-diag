@@ -5,10 +5,11 @@
 #   2. Review the diff (lockfile, changelogs, packaging) and commit.
 #   3. git tag vX.Y.Z && git push origin vX.Y.Z
 #
-# Dist, tests, and the OBS source tarball always come from the tagged
-# commit (workflow_dispatch checks out that tag). Orchestration scripts
-# (osc wait, notes, version gate) come from the workflow revision so an
-# already-published tag can still be finished without moving it.
+# Dist packs the tagged tree with the workflow revision's Makefile, so a
+# later dist-recipe fix can rebuild Source0 for an already-published tag
+# without moving it. Tests still run in the tagged tree. Orchestration
+# scripts (osc wait, notes, version gate) also come from the workflow
+# revision.
 #
 # Immutable GitHub Releases: new rpm/deb names can be attached; an
 # existing tarball cannot be replaced. Linear history on master only
@@ -115,10 +116,13 @@ jobs:
 
       - name: Dist
         run: |
-          make dist
+          make -f ../workflow-src/Makefile dist VERSION="${{ steps.ver.outputs.version }}"
           tarball="../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz"
           ls -la "$tarball"
           test -s "$tarball"
+          tar -tJf "$tarball" | grep -q '/am5-spd-diag.changes$'
+          tar -tJf "$tarball" | grep -q '/am5-spd-diag.spec$'
+          tar -tJf "$tarball" | grep -q '/debian/changelog$'
           cp -f "$tarball" .
 
       - name: Configure osc

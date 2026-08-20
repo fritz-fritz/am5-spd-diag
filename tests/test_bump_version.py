@@ -213,6 +213,9 @@ def test_obs_wait_payload() -> None:
     assert wait.classify_codes(["succeeded", "building"]) == "building"
     assert wait.classify_codes(["succeeded", "excluded"]) == "excluded"
     assert wait.classify_codes(["failed"]) == "failed"
+    assert wait.finished_ok(["tw/x86_64: building"], []) is None
+    assert wait.finished_ok([], ["tw/x86_64: succeeded"]) is True
+    assert wait.finished_ok([], []) is False
     assert wait.collapse_results(
         [
             ("Debian_12", "x86_64", "succeeded"),
@@ -261,6 +264,19 @@ def test_release_notes_mentions_obs() -> None:
     assert "- " in later
 
 
+def test_dist_keeps_packaging_metadata_in_source0() -> None:
+    """OBS %check runs the tagged Makefile, which reads .changes, spec, and debian/."""
+    dist = (ROOT / "Makefile").read_text(encoding="utf-8").split("\ndist:", 1)[1]
+    dist = dist.split("\n\n", 1)[0]
+    assert "*.tar.xz" in dist
+    assert "$(NAME).spec" not in dist
+    assert "$(NAME).changes" not in dist
+    assert "/debian" not in dist
+    assert (ROOT / "am5-spd-diag.changes").is_file()
+    assert (ROOT / "am5-spd-diag.spec").is_file()
+    assert (ROOT / "debian/changelog").is_file()
+
+
 def _write_tree(root: Path) -> None:
     (root / "man").mkdir()
     (root / "Cargo.toml").write_text(CARGO, encoding="utf-8")
@@ -282,4 +298,5 @@ if __name__ == "__main__":
     test_obs_wait_payload()
     test_obs_release_gate()
     test_release_notes_mentions_obs()
+    test_dist_keeps_packaging_metadata_in_source0()
     print("ok")

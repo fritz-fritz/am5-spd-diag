@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,8 +66,26 @@ def test_repo_changes_parse() -> None:
     assert all(entry.bullets for entry in entries)
 
 
+def test_check_without_debian_dir() -> None:
+    debian_text, spec_changelog_text = gen.render(
+        (ROOT / "am5-spd-diag.changes").read_text(encoding="utf-8"),
+        (ROOT / "am5-spd-diag.spec").read_text(encoding="utf-8"),
+        gen._field(ROOT / "am5-spd-diag.dsc", "Version"),
+    )
+    spec_text = gen.replace_spec_changelog(
+        (ROOT / "am5-spd-diag.spec").read_text(encoding="utf-8"),
+        spec_changelog_text,
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "debian.changelog").write_text(debian_text, encoding="utf-8")
+        (root / "am5-spd-diag.spec").write_text(spec_text, encoding="utf-8")
+        assert gen.check_outputs(debian_text, spec_text, root=root) == []
+
+
 if __name__ == "__main__":
     test_parse_and_debian()
     test_spec_changelog()
     test_repo_changes_parse()
+    test_check_without_debian_dir()
     print("ok")
