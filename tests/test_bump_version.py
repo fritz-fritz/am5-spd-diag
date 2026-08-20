@@ -2,6 +2,7 @@
 """Package version bump patches Cargo, packaging, man, and OBS .changes."""
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -213,12 +214,15 @@ def test_obs_wait_payload() -> None:
     assert wait.classify_codes(["succeeded", "building"]) == "building"
     assert wait.classify_codes(["succeeded", "excluded"]) == "excluded"
     assert wait.classify_codes(["failed"]) == "failed"
-    # OBS reports finished/signing after the worker job; the web UI already
-    # shows succeeded. Those must not be treated as still building.
-    assert wait.classify_codes(["finished"]) == "succeeded"
-    assert wait.classify_codes(["signing"]) == "succeeded"
-    assert wait.classify_codes(["succeeded", "finished"]) == "succeeded"
+    # finished/signing stay live until succeeded: GitHub Releases cannot grow
+    # assets after publish, so collect must wait through OBS signing.
+    assert wait.classify_codes(["finished"]) == "finished"
+    assert wait.classify_codes(["signing"]) == "signing"
+    assert wait.classify_codes(["succeeded", "finished"]) == "finished"
     assert wait.classify_codes(["finished", "building"]) == "building"
+    assert wait.status_label("Fedora_44", "x86_64", "finished") == (
+        "Fedora_44/x86_64: finished (web UI may already show succeeded)"
+    )
     assert wait.finished_ok(["tw/x86_64: building"], []) is None
     assert wait.finished_ok(["tw/x86_64: binaries not listed yet"], []) is None
     assert wait.finished_ok([], ["tw/x86_64: succeeded"]) is True
@@ -241,14 +245,14 @@ def test_obs_wait_payload() -> None:
             ("Fedora_43", "x86_64", "building"),
         ]
     ) == [
-        ("Fedora_44", "x86_64", "succeeded"),
+        ("Fedora_44", "x86_64", "finished"),
         ("Fedora_43", "x86_64", "building"),
     ]
 
     orig_results = wait.results
     orig_names = wait.binary_names
     wait.results = lambda *_a, **_k: [
-        ("Fedora_44", "x86_64", "succeeded"),
+        ("Fedora_44", "x86_64", "finished"),
         ("Fedora_43", "x86_64", "building"),
     ]
     wait.binary_names = lambda *_a, **_k: ["am5-spd-diag-1.0.1-0.x86_64.rpm"]
@@ -256,15 +260,19 @@ def test_obs_wait_payload() -> None:
         pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
         assert failed == []
         assert skipped == []
+        assert ready == []
+        assert pending == [
+            "Fedora_44/x86_64: finished (web UI may already show succeeded)",
+            "Fedora_43/x86_64: building",
+        ]
+        wait.results = lambda *_a, **_k: [("Fedora_44", "x86_64", "succeeded")]
+        pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
+        assert pending == []
         assert ready == ["Fedora_44/x86_64: succeeded"]
-        assert pending == ["Fedora_43/x86_64: building"]
         wait.binary_names = lambda *_a, **_k: []
         pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
         assert ready == []
-        assert pending == [
-            "Fedora_44/x86_64: binaries not listed yet",
-            "Fedora_43/x86_64: building",
-        ]
+        assert pending == ["Fedora_44/x86_64: binaries not listed yet"]
     finally:
         wait.results = orig_results
         wait.binary_names = orig_names
@@ -304,6 +312,8 @@ def test_release_notes_mentions_obs() -> None:
     later = notes.notes("1.0.1", "def", notes.DEFAULT_DOWNLOAD, ROOT / "am5-spd-diag.changes")
     assert "Ghost DIMM" in later
     assert "- " in later
+    assert "SHA256SUMS" in later
+    assert "gh release verify v1.0.1" in later
 
 
 def test_dist_keeps_packaging_metadata_in_source0() -> None:
@@ -352,19 +362,51 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "needs.gate.outputs.obs" in release
     assert "ahead_by" in release
     assert "github.event_name == 'push' || inputs.commit_obs" not in release
+    assert "actions/attest@" in release
+    assert "SHA256SUMS" in release
 
 
-def test_obs_package_meta_disables_eol_repos() -> None:
+def test_github_actions_pinned_to_full_sha() -> None:
+    uses_re = re.compile(r"^\s+- uses:\s+(\S+)\s*(?:#.*)?$", re.MULTILINE)
+    sha_re = re.compile(r"^[0-9a-f]{40}$")
+    workflows = ROOT / ".github" / "workflows"
+    found = 0
+    for path in sorted(workflows.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        for match in uses_re.finditer(text):
+            spec = match.group(1)
+            if spec.startswith("./") or spec.startswith("docker://"):
+                continue
+            found += 1
+            _action, sep, ref = spec.partition("@")
+            assert sep, f"{path.name}: {spec} is missing @ref"
+            assert sha_re.fullmatch(ref), (
+                f"{path.name}: {spec} must pin a full 40-char commit SHA"
+            )
+    assert found >= 5
+
+
+def test_obs_package_meta_disables_unwanted_repos() -> None:
     meta = (ROOT / "obs/package-meta.xml").read_text(encoding="utf-8")
+    for repo in ("Fedora_Rawhide", "AppImage"):
+        assert f'<disable repository="{repo}"/>' in meta
     for repo in (
         "xUbuntu_25.10",
         "xUbuntu_25.04",
         "xUbuntu_24.10",
-        "Fedora_Rawhide",
-        "AppImage",
+        "xUbuntu_24.04",
+        "Debian_12",
     ):
-        assert f'repository="{repo}"' in meta
-    assert 'repository="Debian_12"' not in meta
+        assert f'repository="{repo}"' not in meta
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    for repo in (
+        "xUbuntu_26.04",
+        "xUbuntu_25.10",
+        "xUbuntu_25.04",
+        "xUbuntu_24.10",
+        "xUbuntu_24.04",
+    ):
+        assert repo in makefile
     prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
     assert "Prefer: libselinux-dev" in prjconf
     assert "Prefer: libjpeg-dev" in prjconf
@@ -395,5 +437,6 @@ if __name__ == "__main__":
     test_release_notes_mentions_obs()
     test_dist_keeps_packaging_metadata_in_source0()
     test_dist_splits_vendor_and_skips_rustc()
-    test_obs_package_meta_disables_eol_repos()
+    test_github_actions_pinned_to_full_sha()
+    test_obs_package_meta_disables_unwanted_repos()
     print("ok")

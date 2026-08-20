@@ -11,11 +11,13 @@ from collections import defaultdict
 
 SKIP = {"disabled", "excluded", "unresolvable"}
 BAD = {"failed", "broken"}
-# OBS reports `finished` (then `signing`) after the worker job completes. The
-# web UI already shows succeeded at that point; binaries may still be absent
-# from the listing until publish finishes. Treat those codes as built, not live.
-DONE = {"succeeded", "finished", "signing"}
-LIVE = {"scheduled", "dispatching", "building", "blocked"}
+DONE = {"succeeded"}
+# `finished` then `signing` are real post-build steps. The web UI often already
+# shows succeeded, but GitHub Releases are immutable: collect only after every
+# enabled repo is succeeded and a versioned rpm/deb is listed.
+LIVE_ACTIVE = {"scheduled", "dispatching", "building", "blocked"}
+LIVE_POST = {"signing", "finished"}
+LIVE = LIVE_ACTIVE | LIVE_POST
 
 
 def osc(config: str | None, *args: str) -> str:
@@ -49,8 +51,10 @@ def collapse_results(rows: list[tuple[str, str, str]]) -> list[tuple[str, str, s
 
 
 def classify_codes(codes: list[str]) -> str:
-    if any(code in LIVE for code in codes):
-        return next(code for code in codes if code in LIVE)
+    if any(code in LIVE_ACTIVE for code in codes):
+        return next(code for code in codes if code in LIVE_ACTIVE)
+    if any(code in LIVE_POST for code in codes):
+        return next(code for code in codes if code in LIVE_POST)
     if any(code in BAD for code in codes):
         return next(code for code in codes if code in BAD)
     if any(code in SKIP for code in codes):
@@ -58,6 +62,13 @@ def classify_codes(codes: list[str]) -> str:
     if any(code in DONE for code in codes):
         return "succeeded"
     return codes[-1] if codes else "unknown"
+
+
+def status_label(repo: str, arch: str, code: str) -> str:
+    extra = ""
+    if code in {"finished", "signing"}:
+        extra = " (web UI may already show succeeded)"
+    return f"{repo}/{arch}: {code}{extra}"
 
 
 def binary_names(config: str | None, project: str, package: str, repo: str, arch: str) -> list[str]:
@@ -108,7 +119,7 @@ def snapshot(
     skipped: list[str] = []
     ready: list[str] = []
     for repo, arch, code in results(config, project, package):
-        label = f"{repo}/{arch}: {code}"
+        label = status_label(repo, arch, code)
         if code in SKIP:
             skipped.append(label)
             continue

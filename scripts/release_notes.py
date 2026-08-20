@@ -52,6 +52,7 @@ def notes(
     obs_built: bool = True,
 ) -> str:
     bullets = _change_bullets(version, changes_path)
+    tag = f"v{version}"
     if obs_built:
         lead = (
             f"Packages for {version} were built on the Open Build Service.\n"
@@ -79,6 +80,13 @@ def notes(
         "## Source\n"
         "\n"
         f"`{PACKAGE}-{version}.tar.xz` SHA256: `{sha256}`\n"
+        "\n"
+        "`SHA256SUMS` lists every GitHub asset. The Release workflow attests that "
+        "file and the source tarball (`gh attestation verify`). OBS rpm/deb "
+        "binaries are built and signed on OBS, not on GitHub Actions.\n"
+        "\n"
+        f"Verify this release: `gh release verify {tag}` "
+        f"and `gh release verify-asset {tag} {PACKAGE}-{version}.tar.xz`.\n"
     )
 
 

@@ -1,4 +1,11 @@
 -------------------------------------------------------------------
+Thu Aug 20 15:23:25 UTC 2026 - Fritz <code@fritztech.net>
+
+- Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS
+  finished/signing before attaching GitHub assets, pin Actions to commit
+  SHAs, and attest SHA256SUMS plus the source tarball.
+
+-------------------------------------------------------------------
 Thu Aug 20 13:04:18 UTC 2026 - Fritz <code@fritztech.net>
 
 - Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer;
