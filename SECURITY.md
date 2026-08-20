@@ -8,7 +8,7 @@ Captures under `/var/log/am5-spd-diag/` are world-readable (board and DIMM seria
 
 Vendor tickets from this tool include board and DIMM serials and omit system UUID and asset tags. Keep extra machine identifiers out of public reports when you can.
 
-Packages come from the [Open Build Service](https://software.opensuse.org/download/package?package=am5-spd-diag&project=home:fritz-fritz). GitHub Release attachments are convenience copies. The Release workflow attests the source tarball and `SHA256SUMS` (the hashes of the attached files). OBS rpm/deb binaries are built and signed on OBS, not on GitHub Actions.
+Packages come from the [Open Build Service](https://software.opensuse.org/download/package?package=am5-spd-diag&project=home:fritz-fritz). GitHub attached assets are archival copies of release packages. The Release workflow attests the source tarball and `SHA256SUMS` (the hashes of the attached files). OBS rpm/deb binaries are built and signed on OBS, not on GitHub Actions.
 
 ```bash
 gh release verify vX.Y.Z

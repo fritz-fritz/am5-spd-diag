@@ -210,6 +210,15 @@ def test_obs_wait_payload() -> None:
     assert not wait.is_payload("am5-spd-diag-1.0.0-0.src.rpm", "1.0.0")
     assert not wait.is_payload("am5-spd-diag-1.0.0-0.x86_64.rpm", "2.0.0")
     assert not wait.is_payload("am5-spd-diag-debuginfo-1.0.0-0.x86_64.rpm", "1.0.0")
+    assert wait.github_asset_name(
+        "Fedora_44", "am5-spd-diag-1.0.2-0.x86_64.rpm"
+    ) == "am5-spd-diag-1.0.2-0.x86_64.Fedora_44.rpm"
+    assert wait.github_asset_name(
+        "xUbuntu_24.04", "am5-spd-diag_1.0.2-1_amd64.deb"
+    ) == "am5-spd-diag_1.0.2-1_amd64.xUbuntu_24.04.deb"
+    assert wait.github_asset_name(
+        "16.0", "am5-spd-diag-1.0.2-0.openSUSE_Leap_16.0.x86_64.rpm"
+    ) == "am5-spd-diag-1.0.2-0.openSUSE_Leap_16.0.x86_64.rpm"
     assert wait.classify_codes(["succeeded", "unresolvable"]) == "unresolvable"
     assert wait.classify_codes(["succeeded", "building"]) == "building"
     assert wait.classify_codes(["succeeded", "excluded"]) == "excluded"
@@ -314,6 +323,9 @@ def test_release_notes_mentions_obs() -> None:
     assert "- " in later
     assert "SHA256SUMS" in later
     assert "gh release verify v1.0.1" in later
+    assert "GitHub attached assets are archival copies of release packages." in later
+    assert "convenience copies" not in later
+    assert "convenience copies" not in pending
 
 
 def test_dist_keeps_packaging_metadata_in_source0() -> None:
@@ -407,6 +419,9 @@ def test_obs_package_meta_disables_unwanted_repos() -> None:
         "xUbuntu_24.04",
     ):
         assert repo in makefile
+    spec = (ROOT / "am5-spd-diag.spec").read_text(encoding="utf-8")
+    assert '"%{?_repository}" == "16.0"' in spec
+    assert "Release:        0.openSUSE_Leap_16.0" in spec
     prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
     assert "Prefer: libselinux-dev" in prjconf
     assert "Prefer: libjpeg-dev" in prjconf

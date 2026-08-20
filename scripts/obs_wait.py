@@ -91,6 +91,26 @@ def is_payload(name: str, version: str) -> bool:
     return name.endswith(".rpm") or name.endswith(".deb")
 
 
+# Official OBS Leap repo name is "16.0". The spec encodes OpenSUSE in
+# Release so that rpm is archived under its OBS basename.
+KEEP_OBS_BASENAME = {"16.0"}
+
+
+def github_asset_name(repo: str, filename: str) -> str:
+    """GitHub asset name for an OBS binary.
+
+    Most repos share ``name-version-release.arch.rpm`` / the same ``.deb``,
+    so GitHub gets ``stem.repo.ext``. Leap 16.0 already has a unique OBS
+    filename; keep it so the archive matches what OBS publishes.
+    """
+    if repo in KEEP_OBS_BASENAME:
+        return filename
+    if "." not in filename:
+        return f"{filename}.{repo}"
+    stem, ext = filename.rsplit(".", 1)
+    return f"{stem}.{repo}.{ext}"
+
+
 def finished_ok(
     pending: list[str],
     ready: list[str],
@@ -183,9 +203,9 @@ def download_binaries(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project", required=True)
-    parser.add_argument("--package", required=True)
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--project")
+    parser.add_argument("--package")
+    parser.add_argument("--version")
     parser.add_argument("--config", help="osc config file")
     parser.add_argument("--timeout", type=int, default=5400, help="seconds")
     parser.add_argument("--interval", type=int, default=30, help="poll interval seconds")
@@ -194,7 +214,18 @@ def main(argv: list[str] | None = None) -> int:
         metavar="DIR",
         help="download versioned binaries to DIR instead of waiting",
     )
+    parser.add_argument(
+        "--asset-name",
+        nargs=2,
+        metavar=("REPO", "FILE"),
+        help="print the GitHub asset name for an OBS binary and exit",
+    )
     args = parser.parse_args(argv)
+    if args.asset_name:
+        print(github_asset_name(args.asset_name[0], args.asset_name[1]))
+        return 0
+    if not args.project or not args.package or not args.version:
+        parser.error("--project, --package, and --version are required")
     if args.getbinaries:
         try:
             return download_binaries(

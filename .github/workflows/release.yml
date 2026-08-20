@@ -329,9 +329,8 @@ jobs:
             esac
             rel=${f#"$dest"/}
             repo=${rel%%/*}
-            ext=${base##*.}
-            stem=${base%.*}
-            cp -f "$f" "$assets/${stem}.${repo}.${ext}"
+            destname=$(python3 workflow-src/scripts/obs_wait.py --asset-name "$repo" "$base")
+            cp -f "$f" "$assets/$destname"
           done
           cp -f "am5-spd-diag/$OBS_PACKAGE-$VERSION.tar.xz" "$assets/"
           count=$(find "$assets" -type f | wc -l)

@@ -58,7 +58,7 @@ def notes(
             f"Packages for {version} were built on the Open Build Service.\n"
             "\n"
             f"Install from the [OBS download page]({download}) (recommended). "
-            "GitHub attachments are convenience copies for this tag.\n"
+            "GitHub attached assets are archival copies of release packages.\n"
         )
     else:
         lead = (
@@ -66,7 +66,7 @@ def notes(
             "attached in this run.\n"
             "\n"
             f"Install from the [OBS download page]({download}) once packages appear. "
-            "GitHub attachments are convenience copies for this tag.\n"
+            "GitHub attached assets are archival copies of release packages.\n"
         )
     return (
         f"{lead}"

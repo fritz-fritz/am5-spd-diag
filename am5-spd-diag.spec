@@ -18,7 +18,13 @@
 
 Name:           am5-spd-diag
 Version:        1.0.2
+# OBS Leap repos are officially named 16.0 (not openSUSE_Leap_16.0). Put
+# OpenSUSE in Release so the published rpm name matches the GitHub archive.
+%if "%{?_repository}" == "16.0"
+Release:        0.openSUSE_Leap_16.0
+%else
 Release:        0
+%endif
 Summary:        AM5 DDR5 SPD hub diagnostics after sleep/warm reboot
 License:        MIT
 Group:          System/Monitoring
@@ -120,6 +126,8 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 - Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS
   finished/signing before attaching GitHub assets, pin Actions to commit
   SHAs, and attest SHA256SUMS plus the source tarball.
+- Name the Leap 16.0 rpm Release 0.openSUSE_Leap_16.0 so the file OBS
+  publishes matches the GitHub archive (the OBS repo must stay 16.0).
 
 * Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.2
 - Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer; keep
