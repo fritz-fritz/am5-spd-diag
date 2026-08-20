@@ -429,6 +429,36 @@ def test_obs_package_meta_disables_unwanted_repos() -> None:
     assert fmt == "1.0", fmt
 
 
+def test_release_profile_and_rpmlint() -> None:
+    cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    assert "[profile.release]" in cargo
+    assert "strip = true" in cargo
+    assert 'lto = "thin"' in cargo
+    spec = (ROOT / "am5-spd-diag.spec").read_text(encoding="utf-8")
+    assert "%define debug_package %{nil}" in spec
+    assert "%service_add_pre am5-spd-diag.service" in spec
+    assert re.search(r"^%pre\b", spec, re.MULTILINE)
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" in makefile
+    assert "$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" not in makefile
+    for rules in (
+        (ROOT / "debian.rules").read_text(encoding="utf-8"),
+        (ROOT / "debian" / "rules").read_text(encoding="utf-8"),
+    ):
+        assert "noautodbgsym" in rules
+    rpmlintrc = (ROOT / "am5-spd-diag.rpmlintrc").read_text(encoding="utf-8")
+    for check in (
+        "polkit-user-privilege",
+        "polkit-untracked-privilege",
+        "polkit-file-unauthorized",
+    ):
+        assert check in rpmlintrc
+    osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
+    assert "$NAME.rpmlintrc" in osc_build
+    release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    assert "$OBS_PACKAGE.rpmlintrc" in release
+
+
 def _write_tree(root: Path) -> None:
     (root / "man").mkdir()
     (root / "Cargo.toml").write_text(CARGO, encoding="utf-8")
@@ -454,4 +484,5 @@ if __name__ == "__main__":
     test_dist_splits_vendor_and_skips_rustc()
     test_github_actions_pinned_to_full_sha()
     test_obs_package_meta_disables_unwanted_repos()
+    test_release_profile_and_rpmlint()
     print("ok")

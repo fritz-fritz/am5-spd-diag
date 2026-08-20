@@ -3,10 +3,16 @@ members = ["crates/am5-spd-diag", "crates/am5-spd-diag-notify"]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 rust-version = "1.97.1"
 license = "MIT"
 authors = ["Fritz <code@fritztech.net>"]
 repository = "https://github.com/fritz-fritz/am5-spd-diag"
 homepage = "https://github.com/fritz-fritz/am5-spd-diag"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

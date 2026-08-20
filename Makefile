@@ -20,7 +20,7 @@ INSTALL ?= install
 INSTALL_PROGRAM = $(INSTALL) -m 0755
 INSTALL_DATA    = $(INSTALL) -m 0644
 
-VERSION     ?= 1.0.2
+VERSION     ?= 1.0.3
 
 # OBS project directories contain ':'; rustc rejects that in LD_LIBRARY_PATH.
 # Use a path without ':' and without $HOME so `sudo make install` finds the
@@ -238,9 +238,9 @@ install:
 	$(INSTALL) -d $(DESTDIR)$(ICONDIR)/256x256/apps
 	$(INSTALL) -d $(DESTDIR)$(DBUSDIR)
 	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(BINDIR)/$(NAME)
-	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot
-	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-probe
-	$(INSTALL_PROGRAM) $(BIN_RELEASE) $(DESTDIR)$(LIBEXECDIR)/pkexec-recover
+	ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot
+	ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-probe
+	ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-recover
 	test -x "$(NOTIFY_RELEASE)"
 	$(INSTALL_PROGRAM) $(NOTIFY_RELEASE) $(DESTDIR)$(LIBEXECDIR)/am5-spd-diag-notify
 	sed 's|@LIBEXEC@|$(LIBEXECDIR)|g' share/applications/org.opensuse.am5spdDiag.desktop \
