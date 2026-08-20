@@ -88,7 +88,7 @@ jobs:
       - name: Dist
         run: |
           make dist
-          # Makefile writes the tarball next to the checkout directory.
+          test -s "../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz"
           cp -f "../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz" .
 
       - name: Configure osc
