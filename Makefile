@@ -293,18 +293,13 @@ vendor:
 	@echo "Vendored crates into vendor/ (.cargo/config.toml for OBS --offline)"
 
 dist: vendor
-	# Snapshot first: GNU tar exits 1 ("file changed as we read it") when
-	# directory mtimes shift while packing a freshly vendored tree. The
-	# second tar is of an immutable copy, so the published tarball is clean.
-	stage=$$(mktemp -d); \
-	trap 'rm -rf "$$stage"' EXIT; \
-	mkdir -p "$$stage/$(NAME)-$(VERSION)"; \
-	set +o pipefail >/dev/null 2>&1 || true; \
-	tar -C "$(CURDIR)" \
+	# GNU tar exits 1 if a directory mtime shifts while packing a freshly
+	# vendored tree ("file changed as we read it") after writing a complete
+	# archive. Exit 2+ is a real failure.
+	tar -C .. -cJf $(NAME)-$(VERSION).tar.xz \
 	  --exclude=.osc --exclude='*.tar.xz' --exclude=debian \
 	  --exclude=__pycache__ --exclude='*.pyc' \
 	  --exclude=$(NAME).spec --exclude=$(NAME).changes \
 	  --exclude=target --exclude=.git --exclude=.cargo-home \
-	  -cf - . | tar -C "$$stage/$(NAME)-$(VERSION)" -xf -; \
-	tar -C "$$stage" -cJf "$(abspath $(CURDIR)/../$(NAME)-$(VERSION).tar.xz)" \
-	  "$(NAME)-$(VERSION)"
+	  --transform 's,^$(NAME),$(NAME)-$(VERSION),' \
+	  $(NAME) || [ $$? -eq 1 ]
