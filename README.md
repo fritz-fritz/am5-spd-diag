@@ -2,6 +2,11 @@
 
 # Ghost DIMM
 
+[![build result](https://build.opensuse.org/projects/home:fritz-fritz/packages/am5-spd-diag/badge.svg?type=default)](https://build.opensuse.org/package/show/home:fritz-fritz/am5-spd-diag)
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/fritz-fritz/am5-spd-diag/total?label=%F0%9F%A0%9F%20Downloads)](https://github.com/fritz-fritz/am5-spd-diag/releases/latest)
+![HitCount](https://hits.dwyl.com/fritz-fritz/am5-spd-diag.svg)
+[![CodeQL](https://github.com/fritz-fritz/am5-spd-diag/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/fritz-fritz/am5-spd-diag/actions/workflows/github-code-scanning/codeql)
+
 **Your DDR5 is fine. Firmware made a ghost.**  
 After sleep on AMD AM5, BIOS can misread a real memory stick as an unknown 2 GB module.  
 A restart does not fix it. Pulling the power does.
@@ -194,15 +199,6 @@ Sleep and boot captures are automatic. They never pop a prompt.
 
 Board and DIMM serials are included so a vendor can match the kit. System UUID and asset tags are left out.
 
-### Packaging
-
-- RPM: `am5-spd-diag.spec` (OBS project `home:fritz-fritz`), **x86_64** (AM5)
-- Debian: OBS `debian.*` + `am5-spd-diag.dsc` (debtransform); local `debian/` (`dh` + the same Makefile). Architecture `amd64`.
-- Build: Rust (`cargo`), `gtk4-devel` / `libgtk-4-dev` for the notify window. `make dist` writes Source0 (no vendor) plus a vendor archive. OBS builds use a pinned official rustc as Source2 (`obs/rust-dist.txt`, `make osc-fetch-rust`). Dependabot bumps `rust-toolchain.toml`; CI and Release parse that channel into `dtolnay/rust-toolchain`. Debian 12 (oldstable, GTK 4.8) is included: the notify window uses `MessageDialog` there and `AlertDialog` on GTK 4.10+.
-- Changelog source of truth is `am5-spd-diag.changes`. After editing it, run `python3 scripts/gen_changelogs.py` to refresh `debian.changelog`, `debian/changelog`, and the spec `%changelog`.
-- Cut a release with `make bump TO=X.Y.Z MSG='...'`, merge to the default branch, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Tags on a PR branch do not publish or commit to OBS. GitHub Actions uploads Source0, the vendor archive, and pinned rustc to OBS and attaches the packages to the GitHub Release.
-- `dmidecode` is recommended. Capture reads SMBIOS from sysfs first and falls back to the `dmidecode` binary if the kernel table is unavailable.
-
 ---
 
 ## How it works
@@ -387,9 +383,18 @@ make build
 
 `make test` runs the Rust suite plus packaging checks. `sudo make PREFIX=/usr install` only copies an already-built tree.
 
+### Packaging
+
+- RPM: `am5-spd-diag.spec` (OBS project `home:fritz-fritz`), **x86_64** (AM5)
+- Debian: OBS `debian.*` + `am5-spd-diag.dsc` (debtransform); local `debian/` (`dh` + the same Makefile). Architecture `amd64`.
+- Build: Rust (`cargo`), `gtk4-devel` / `libgtk-4-dev` for the notify window. `make dist` writes Source0 (no vendor) plus a vendor archive. OBS builds use a pinned official rustc as Source2 (`obs/rust-dist.txt`, `make osc-fetch-rust`). Dependabot bumps `rust-toolchain.toml`; CI and Release parse that channel into `dtolnay/rust-toolchain`. Debian 12 (oldstable, GTK 4.8) is included: the notify window uses `MessageDialog` there and `AlertDialog` on GTK 4.10+.
+- Changelog source of truth is `am5-spd-diag.changes`. After editing it, run `python3 scripts/gen_changelogs.py` to refresh `debian.changelog`, `debian/changelog`, and the spec `%changelog`.
+- Cut a release with `make bump TO=X.Y.Z MSG='...'`, merge to the default branch, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Tags on a PR branch do not publish or commit to OBS. GitHub Actions uploads Source0, the vendor archive, and pinned rustc to OBS and attaches the packages to the GitHub Release.
+- `dmidecode` is recommended. Capture reads SMBIOS from sysfs first and falls back to the `dmidecode` binary if the kernel table is unavailable.
+
 ## Credits
 
-- **[9950X3D](https://forum-en.msi.com/index.php?threads/ddr5-module-detected-as-2gb-ghost-dimm-after-s3-sleep-on-am5-root-cause-found.419787/)** — root cause, ABL/PEI disassembly, and the first documented in-band MR11 clear
+- **[MSI Forum's @9950X3D](https://forum-en.msi.com/index.php?threads/ddr5-module-detected-as-2gb-ghost-dimm-after-s3-sleep-on-am5-root-cause-found.419787/)** — root cause, ABL/PEI disassembly, and the first documented in-band MR11 clear
 - [Level1Techs thread 229940](https://forum.level1techs.com/t/am5-linux-triggering-suspected-firmware-bug-with-s3-sleep/229940) — early multi-vendor symptom reports
 - [Guenter Roeck, `spd5118`](https://github.com/torvalds/linux/commit/a852162efbff611ed49ae61a141e80c81689d54c) — 2024 note that some BIOS versions leave the hub in 2-byte (16-bit) addressing across a soft reboot, and that only a power cycle resets it
 

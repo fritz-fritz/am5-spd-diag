@@ -5,9 +5,6 @@
 	  the behavior. It is believed to be SPD corruption and has been reproduced on
 	  a mix of vendor hardware.</description>
   <build>
-    <disable repository="xUbuntu_25.10"/>
-    <disable repository="xUbuntu_25.04"/>
-    <disable repository="xUbuntu_24.10"/>
     <disable repository="Fedora_Rawhide"/>
     <disable repository="AppImage"/>
     <disable arch="i586"/>

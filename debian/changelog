@@ -1,5 +1,10 @@
-am5-spd-diag (1.0.1-1) unstable; urgency=medium
+am5-spd-diag (1.0.2-1) unstable; urgency=medium
 
+  * Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS
+    finished/signing before attaching GitHub assets, pin Actions to commit
+    SHAs, and attest SHA256SUMS plus the source tarball.
+  * Name the Leap 16.0 rpm Release 0.openSUSE_Leap_16.0 so the file OBS
+    publishes matches the GitHub archive (the OBS repo must stay 16.0).
   * Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer; keep
     MessageDialog on Debian 12 (GTK 4.8). Fix the header-bar icon search
     path so the app icon loads from the source tree.
@@ -48,4 +53,4 @@ am5-spd-diag (1.0.1-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Thu, 20 Aug 2026 13:04:18 +0000
+ -- Fritz <code@fritztech.net>  Thu, 20 Aug 2026 15:23:25 +0000

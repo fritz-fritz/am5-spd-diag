@@ -12,7 +12,12 @@ from collections import defaultdict
 SKIP = {"disabled", "excluded", "unresolvable"}
 BAD = {"failed", "broken"}
 DONE = {"succeeded"}
-LIVE = {"scheduled", "dispatching", "building", "blocked", "signing", "finished"}
+# `finished` then `signing` are real post-build steps. The web UI often already
+# shows succeeded, but GitHub Releases are immutable: collect only after every
+# enabled repo is succeeded and a versioned rpm/deb is listed.
+LIVE_ACTIVE = {"scheduled", "dispatching", "building", "blocked"}
+LIVE_POST = {"signing", "finished"}
+LIVE = LIVE_ACTIVE | LIVE_POST
 
 
 def osc(config: str | None, *args: str) -> str:
@@ -46,8 +51,10 @@ def collapse_results(rows: list[tuple[str, str, str]]) -> list[tuple[str, str, s
 
 
 def classify_codes(codes: list[str]) -> str:
-    if any(code in LIVE for code in codes):
-        return next(code for code in codes if code in LIVE)
+    if any(code in LIVE_ACTIVE for code in codes):
+        return next(code for code in codes if code in LIVE_ACTIVE)
+    if any(code in LIVE_POST for code in codes):
+        return next(code for code in codes if code in LIVE_POST)
     if any(code in BAD for code in codes):
         return next(code for code in codes if code in BAD)
     if any(code in SKIP for code in codes):
@@ -55,6 +62,13 @@ def classify_codes(codes: list[str]) -> str:
     if any(code in DONE for code in codes):
         return "succeeded"
     return codes[-1] if codes else "unknown"
+
+
+def status_label(repo: str, arch: str, code: str) -> str:
+    extra = ""
+    if code in {"finished", "signing"}:
+        extra = " (web UI may already show succeeded)"
+    return f"{repo}/{arch}: {code}{extra}"
 
 
 def binary_names(config: str | None, project: str, package: str, repo: str, arch: str) -> list[str]:
@@ -75,6 +89,26 @@ def is_payload(name: str, version: str) -> bool:
     if any(part in lower for part in ("debuginfo", "debugsource", "dbgsym")):
         return False
     return name.endswith(".rpm") or name.endswith(".deb")
+
+
+# Official OBS Leap repo name is "16.0". The spec encodes OpenSUSE in
+# Release so that rpm is archived under its OBS basename.
+KEEP_OBS_BASENAME = {"16.0"}
+
+
+def github_asset_name(repo: str, filename: str) -> str:
+    """GitHub asset name for an OBS binary.
+
+    Most repos share ``name-version-release.arch.rpm`` / the same ``.deb``,
+    so GitHub gets ``stem.repo.ext``. Leap 16.0 already has a unique OBS
+    filename; keep it so the archive matches what OBS publishes.
+    """
+    if repo in KEEP_OBS_BASENAME:
+        return filename
+    if "." not in filename:
+        return f"{filename}.{repo}"
+    stem, ext = filename.rsplit(".", 1)
+    return f"{stem}.{repo}.{ext}"
 
 
 def finished_ok(
@@ -105,19 +139,27 @@ def snapshot(
     skipped: list[str] = []
     ready: list[str] = []
     for repo, arch, code in results(config, project, package):
-        label = f"{repo}/{arch}: {code}"
+        label = status_label(repo, arch, code)
         if code in SKIP:
             skipped.append(label)
             continue
         if code in BAD:
             failed.append(label)
             continue
-        if code in DONE and any(
-            is_payload(name, version) for name in binary_names(config, project, package, repo, arch)
-        ):
+        if code in LIVE:
+            pending.append(label)
+            continue
+        has_payload = any(
+            is_payload(name, version)
+            for name in binary_names(config, project, package, repo, arch)
+        )
+        if has_payload:
             ready.append(label)
             continue
-        pending.append(label)
+        if code in DONE:
+            pending.append(f"{repo}/{arch}: binaries not listed yet")
+        else:
+            pending.append(label)
     return pending, failed, skipped, ready
 
 
@@ -149,9 +191,10 @@ def download_binaries(
         if config:
             cmd.extend(["-c", config])
         cmd.extend(["getbinaries", project, package, repo, arch, "-d", target])
+        print(f"collect: {repo}/{arch} -> {target}", flush=True)
         subprocess.check_call(cmd)
         count += 1
-        print(f"downloaded {repo}/{arch}")
+        print(f"downloaded {repo}/{arch}", flush=True)
     if count == 0:
         print("obs_wait: no repositories to download", file=sys.stderr)
         return 1
@@ -160,9 +203,9 @@ def download_binaries(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project", required=True)
-    parser.add_argument("--package", required=True)
-    parser.add_argument("--version", required=True)
+    parser.add_argument("--project")
+    parser.add_argument("--package")
+    parser.add_argument("--version")
     parser.add_argument("--config", help="osc config file")
     parser.add_argument("--timeout", type=int, default=5400, help="seconds")
     parser.add_argument("--interval", type=int, default=30, help="poll interval seconds")
@@ -171,7 +214,18 @@ def main(argv: list[str] | None = None) -> int:
         metavar="DIR",
         help="download versioned binaries to DIR instead of waiting",
     )
+    parser.add_argument(
+        "--asset-name",
+        nargs=2,
+        metavar=("REPO", "FILE"),
+        help="print the GitHub asset name for an OBS binary and exit",
+    )
     args = parser.parse_args(argv)
+    if args.asset_name:
+        print(github_asset_name(args.asset_name[0], args.asset_name[1]))
+        return 0
+    if not args.project or not args.package or not args.version:
+        parser.error("--project, --package, and --version are required")
     if args.getbinaries:
         try:
             return download_binaries(

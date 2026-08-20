@@ -17,8 +17,14 @@
 
 
 Name:           am5-spd-diag
-Version:        1.0.1
+Version:        1.0.2
+# OBS Leap repos are officially named 16.0 (not openSUSE_Leap_16.0). Put
+# OpenSUSE in Release so the published rpm name matches the GitHub archive.
+%if "%{?_repository}" == "16.0"
+Release:        0.openSUSE_Leap_16.0
+%else
 Release:        0
+%endif
 Summary:        AM5 DDR5 SPD hub diagnostics after sleep/warm reboot
 License:        MIT
 Group:          System/Monitoring
@@ -116,18 +122,25 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %config(noreplace) %{_sysconfdir}/am5-spd-diag.conf
 
 %changelog
-* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.2
+- Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS
+  finished/signing before attaching GitHub assets, pin Actions to commit
+  SHAs, and attest SHA256SUMS plus the source tarball.
+- Name the Leap 16.0 rpm Release 0.openSUSE_Leap_16.0 so the file OBS
+  publishes matches the GitHub archive (the OBS repo must stay 16.0).
+
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.2
 - Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer; keep
   MessageDialog on Debian 12 (GTK 4.8). Fix the header-bar icon search path
   so the app icon loads from the source tree.
 
-* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.2
 - Split OBS sources and pin official rustc from rust-toolchain.toml so older
   distros can build. Dependabot bumps the toolchain; OBS Source2 and CI
   follow that pin. GTK window targets GTK 4.8 so Debian 12 (oldstable)
   packages. Not a Ghost DIMM behavior change.
 
-* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.2
 - Make /var/log/am5-spd-diag 0755 root:root and write capture state with
   O_NOFOLLOW so a local user cannot symlink-swap passwordless snapshot into
   a root file write.
@@ -141,10 +154,10 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 - Return a real exit status from capture so report/package refuse stale
   evidence; systemd boot/sleep units stay best-effort.
 
-* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.2
 - First stable release (Rust rewrite of the Python/bash tool).
 
-* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
+* Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.2
 - Show Ghost DIMM as the desktop notice sender (keep the D-Bus app id).
 - Rename the in-band command to fix; keep recover as an alias. CLI fix uses
   pkexec like Probe. A successful clear no longer re-fires the corruption
@@ -152,35 +165,35 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 - Run make test in RPM %%check and Debian dh_auto_test so OBS builds both
   package types.
 
-* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.1
+* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.2
 - Add an application icon and a visible desktop launcher for the GTK window.
   Corruption notices still use dialog-warning as the main image; the logo
   comes from the desktop file.
 - Reply to D-Bus Activate before closing the session name so Plasma does not
   show "Launching AM5 SPD diagnostics (Failed)" on menu start.
 
-* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.1
+* Tue Aug 18 2026 Fritz <code@fritztech.net> - 1.0.2
 - Rewrite the tool in Rust: one x86_64 CLI binary plus a GTK notify window.
   Capture schema, systemd units, and D-Bus app id are unchanged.
 - Drop Python/bash runtime helpers and the terminal launcher. Notification
   clicks open am5-spd-diag-notify. Package is ExclusiveArch x86_64 with
   vendored Cargo crates and gtk4-devel.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.2
 - Derive Debian changelog from am5-spd-diag.changes so RPM and Debian
   packages share the same history.
 - Fix Debian package metadata (maintainer, description, copyright, Homepage,
   and recommends).
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.2
 - Own /usr/lib/systemd/system-sleep so openSUSE post-build-checks does not
   fail. Drop duplicate share-dir listing.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.2
 - Install docs into %%{_docdir} so openSUSE finds LICENSE/README.
 - Add Debian/Ubuntu OBS sources (dsc + debian.*) so those repos are not
   excluded.
 
-* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.1
+* Mon Aug 17 2026 Fritz <code@fritztech.net> - 1.0.2
 - Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
   reboot.

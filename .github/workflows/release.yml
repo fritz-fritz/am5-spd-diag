@@ -57,6 +57,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 env:
   OBS_PROJECT: home:fritz-fritz
@@ -124,14 +126,14 @@ jobs:
       run:
         working-directory: am5-spd-diag
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: am5-spd-diag
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       # Notes/scripts come from the workflow revision (master on dispatch),
       # not the tag. Dist still packs the tagged tree.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: workflow-src
           ref: ${{ github.sha }}
@@ -150,6 +152,10 @@ jobs:
             *) echo "tag must be vX.Y.Z (got $tag)" >&2; exit 1 ;;
           esac
           version="${tag#v}"
+          if ! printf '%s' "$version" | grep -qxE '[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "tag must be vX.Y.Z (got $tag)" >&2
+            exit 1
+          fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -170,7 +176,7 @@ jobs:
         id: rust
         run: echo "version=$(../workflow-src/scripts/rust_pin.sh channel rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
         with:
           toolchain: ${{ steps.rust.outputs.version }}
           components: rustfmt, clippy
@@ -323,9 +329,8 @@ jobs:
             esac
             rel=${f#"$dest"/}
             repo=${rel%%/*}
-            ext=${base##*.}
-            stem=${base%.*}
-            cp -f "$f" "$assets/${stem}.${repo}.${ext}"
+            destname=$(python3 workflow-src/scripts/obs_wait.py --asset-name "$repo" "$base")
+            cp -f "$f" "$assets/$destname"
           done
           cp -f "am5-spd-diag/$OBS_PACKAGE-$VERSION.tar.xz" "$assets/"
           count=$(find "$assets" -type f | wc -l)
@@ -344,6 +349,27 @@ jobs:
           mkdir -p "$RUNNER_TEMP/release-assets"
           cp -f "$OBS_PACKAGE-$VERSION.tar.xz" "$RUNNER_TEMP/release-assets/"
           ls -l "$RUNNER_TEMP/release-assets"
+
+      - name: Write SHA256SUMS
+        working-directory: .
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          assets="$RUNNER_TEMP/release-assets"
+          test -d "$assets"
+          (
+            cd "$assets"
+            sha256sum -- * > SHA256SUMS
+          )
+          grep -F "am5-spd-diag-$VERSION.tar.xz" "$assets/SHA256SUMS"
+          cat "$assets/SHA256SUMS"
+
+      - name: Attest GitHub-produced artifacts
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release-assets/am5-spd-diag-${{ steps.ver.outputs.version }}.tar.xz
+            ${{ runner.temp }}/release-assets/SHA256SUMS
 
       - name: Publish GitHub Release
         env:
