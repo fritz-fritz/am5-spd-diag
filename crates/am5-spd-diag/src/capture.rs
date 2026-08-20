@@ -4,7 +4,10 @@ use crate::dimm::{format_dimm_summary, summary_flags as dimm_summary_flags};
 use crate::hub::{notify_all, write_baseline};
 use crate::i2c::{probe_hubs, recover_stuck};
 use crate::paths::share_dir;
-use crate::safe_fs::{copy_nofollow, create_nofollow, open_append_nofollow, write_nofollow};
+use crate::safe_fs::{
+    copy_nofollow, create_nofollow, ensure_dir, open_append_nofollow, set_privileged_umask,
+    write_nofollow,
+};
 use crate::schema::iter_json_objects;
 use crate::smbios::{
     collect_memory_dump, collect_system_dump, parse_memory_devices, write_spd_page0_files,
@@ -18,6 +21,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn capture_main(args: &[String]) -> i32 {
+    set_privileged_umask();
     let event = args.first().map(String::as_str).unwrap_or("manual");
     let sleep_type = args.get(1).cloned().unwrap_or_default();
     match event {
@@ -54,9 +58,10 @@ pub fn capture_main(args: &[String]) -> i32 {
 /// Clear stuck MR11 hubs, then capture a `recover` timeline event (hub.json + recover.json).
 pub fn recover_and_record() -> Value {
     let result = recover_stuck(None);
+    set_privileged_umask();
     let cfg = load_config(&share_dir());
     let state_dir = cfg.state_dir();
-    let _ = fs::create_dir_all(&state_dir);
+    let _ = ensure_dir(&state_dir);
     let pending = state_dir.join("pending-recover.json");
     let _ = write_nofollow(
         &pending,
@@ -211,7 +216,7 @@ fn classify_boot_kind(timeline: &Path, current_boot: &str) -> String {
 }
 
 fn append_timeline(state_dir: &Path, rec: &Value) -> std::io::Result<()> {
-    fs::create_dir_all(state_dir)?;
+    ensure_dir(state_dir)?;
     let lock_path = state_dir.join("timeline.lock");
     let lock = open_append_nofollow(&lock_path)?;
     let rc = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
@@ -387,11 +392,12 @@ fn capture_event(event_in: &str, sleep_type: &str, cfg: &Config) -> std::io::Res
     let state_dir = cfg.state_dir();
     let events_dir = state_dir.join("events");
     let latest = state_dir.join("latest");
-    fs::create_dir_all(&events_dir)?;
-    fs::create_dir_all(&latest)?;
+    ensure_dir(&state_dir)?;
+    ensure_dir(&events_dir)?;
+    ensure_dir(&latest)?;
     let stamp = utc_now();
     let dir = events_dir.join(format!("{stamp}-{event}"));
-    fs::create_dir_all(&dir)?;
+    ensure_dir(&dir)?;
     let mem_kb = memtotal_kb();
     let sleep_state = mem_sleep();
     let susp = suspend_success();

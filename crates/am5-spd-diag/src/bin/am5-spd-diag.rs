@@ -11,8 +11,10 @@ use am5_spd_diag::hub::{
 use am5_spd_diag::notify::{ensure_session_env, notify_bin_path};
 use am5_spd_diag::paths::{
     helper_kind, pin_helper_paths, pkexec_helper_path, run_pkexec_helper, share_dir,
-    tmpfiles_create_conf, tmpfiles_purge_conf, user_purge_targets, HelperKind, SYSTEM_STATE_DIR,
+    user_purge_targets, HelperKind, SYSTEM_STATE_DIR,
 };
+use am5_spd_diag::purge::{purge_then_user, PurgeSystem};
+use am5_spd_diag::safe_fs::set_privileged_umask;
 use am5_spd_diag::smbios::{collect_memory_dump, parse_memory_devices};
 use std::env;
 use std::io::{self, Write};
@@ -294,11 +296,10 @@ fn cmd_purge(args: &[String]) -> i32 {
             return 1;
         }
     }
-    if let Err(err) = purge_system_state() {
+    if let Err(err) = purge_then_user(&PurgeSystem::installed(), &user_targets) {
         eprintln!("am5-spd-diag: {err}");
         return 1;
     }
-    remove_user_purge_targets(&user_targets);
     if !system_only {
         println!("Purged.");
     }
@@ -337,44 +338,6 @@ fn remove_user_purge_targets(targets: &[PathBuf]) {
     for path in targets {
         let _ = std::fs::remove_dir_all(path);
     }
-}
-
-fn purge_system_state() -> Result<(), String> {
-    let remove_conf = tmpfiles_purge_conf();
-    if remove_conf.is_file() {
-        let status = Command::new("systemd-tmpfiles")
-            .arg("--remove")
-            .arg(&remove_conf)
-            .status()
-            .map_err(|e| format!("systemd-tmpfiles --remove: {e}"))?;
-        if !status.success() {
-            return Err(format!(
-                "systemd-tmpfiles --remove {} failed",
-                remove_conf.display()
-            ));
-        }
-    } else {
-        let path = Path::new(SYSTEM_STATE_DIR);
-        let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-        if resolved != path {
-            return Err(format!(
-                "refusing to purge {}: not {}",
-                resolved.display(),
-                SYSTEM_STATE_DIR
-            ));
-        }
-        let _ = std::fs::remove_dir_all(path);
-    }
-    let create_conf = tmpfiles_create_conf();
-    if create_conf.is_file() {
-        let _ = Command::new("systemd-tmpfiles")
-            .arg("--create")
-            .arg(&create_conf)
-            .status();
-    } else {
-        let _ = std::fs::create_dir_all(SYSTEM_STATE_DIR);
-    }
-    Ok(())
 }
 
 fn cmd_open(args: &[String]) -> i32 {
@@ -734,6 +697,7 @@ fn main() {
         // after pkexec) is ignored so a symlink /usr/bin/am5-spd-diag ->
         // pkexec-snapshot cannot reject `am5-spd-diag snapshot`.
         pin_helper_paths();
+        set_privileged_umask();
         let rc = match kind {
             HelperKind::Snapshot => capture_main(&["manual".into()]),
             HelperKind::Probe => {
@@ -758,6 +722,7 @@ fn main() {
             process::exit(2);
         }
         pin_helper_paths();
+        set_privileged_umask();
         process::exit(capture_main(&["manual".into()]));
     }
     let cmd = args.first().cloned().unwrap_or_default();

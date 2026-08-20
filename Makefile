@@ -69,10 +69,20 @@ test-packaging:
 	  cmp -s debian.rules debian/rules && \
 	  cmp -s debian.compat debian/compat; \
 	fi
-	grep -q '^d /var/log/am5-spd-diag 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
+	grep -q '^d= /var/log/am5-spd-diag 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
+	grep -q '^d= /var/log/am5-spd-diag/events 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
+	grep -q '^d= /var/log/am5-spd-diag/latest 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
 	grep -q '^Z /var/log/am5-spd-diag ~0755 root root -$$' systemd/$(NAME).tmpfiles.conf
 	grep -q '^R /var/log/am5-spd-diag$$' systemd/$(NAME)-purge.conf
 	! grep -q '^R ' systemd/$(NAME).tmpfiles.conf
+	ROOT=$$(mktemp -d); \
+	  trap 'rm -rf "$$ROOT"' EXIT; \
+	  mkdir -p "$$ROOT/var/log/$(NAME)"; \
+	  ln -s /tmp "$$ROOT/var/log/$(NAME)/events"; \
+	  ln -s /tmp "$$ROOT/var/log/$(NAME)/latest"; \
+	  systemd-tmpfiles --create --root="$$ROOT" - < systemd/$(NAME).tmpfiles.conf >/dev/null 2>&1 || true; \
+	  test -d "$$ROOT/var/log/$(NAME)/events" && test ! -L "$$ROOT/var/log/$(NAME)/events"; \
+	  test -d "$$ROOT/var/log/$(NAME)/latest" && test ! -L "$$ROOT/var/log/$(NAME)/latest"
 
 test-tool:
 	$(CARGO) test -p am5-spd-diag $(CARGOFLAGS)

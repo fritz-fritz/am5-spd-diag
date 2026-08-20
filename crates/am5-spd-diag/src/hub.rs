@@ -1,6 +1,6 @@
 use crate::i2c::{probe_hubs, uid_from_bus_path, STUCK_MR11};
 use crate::notify::{notify_bin_path, APP_ID};
-use crate::safe_fs::write_nofollow;
+use crate::safe_fs::{ensure_dir, write_nofollow};
 use crate::schema::FORUM_URL;
 use serde_json::Value;
 use std::fs;
@@ -89,7 +89,7 @@ pub fn notify_all(message: &str) {
 
 pub fn write_baseline(path: &Path, payload: &Value) {
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+        let _ = ensure_dir(parent);
     }
     let text = serde_json::to_string_pretty(payload).unwrap_or_else(|_| "{}".into());
     let _ = write_nofollow(path, format!("{text}\n"));

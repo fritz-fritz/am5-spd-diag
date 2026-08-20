@@ -1,5 +1,5 @@
 use crate::dimm::parse_dmidecode_memory;
-use crate::safe_fs::write_nofollow;
+use crate::safe_fs::{ensure_dir, write_nofollow};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -747,7 +747,7 @@ pub fn format_spd_page0_text(sysfs: &str, data: &[u8]) -> String {
 
 pub fn write_spd_page0_files(directory: &Path, probe: &serde_json::Value) -> Vec<PathBuf> {
     let mut written = Vec::new();
-    let _ = std::fs::create_dir_all(directory);
+    let _ = ensure_dir(directory);
     let Some(stuck) = probe.get("stuck").and_then(|v| v.as_array()) else {
         return written;
     };
