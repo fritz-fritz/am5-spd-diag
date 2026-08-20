@@ -14,8 +14,10 @@
 #   OBS_USER      OBS account that owns home:fritz-fritz
 #   OBS_PASSWORD  OBS password / app password for osc (api.opensuse.org)
 #
-# workflow_dispatch retries asset attach for an existing tag without committing
-# sources to OBS again (use this if the wait timed out after a successful build).
+# workflow_dispatch retries asset attach for an existing tag. Leave
+# commit_obs off if OBS already has the sources (wait timed out). Turn it
+# on to push the vendored tarball when the tag run skipped OBS (empty
+# OBS_PASSWORD) or the commit never landed.
 #
 # Confirm the home project publish flag is on. osc getbinaries reads the build
 # backend, so attachments do not wait on download.opensuse.org.
@@ -32,6 +34,11 @@ on:
         description: Existing tag to attach OBS binaries to (vX.Y.Z)
         required: true
         type: string
+      commit_obs:
+        description: Commit the vendored tarball to OBS before waiting for binaries
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -94,15 +101,18 @@ jobs:
           cp -f "$tarball" .
 
       - name: Configure osc
+        id: osc
         working-directory: .
         env:
           OBS_USER: ${{ secrets.OBS_USER }}
           OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
         run: |
           if [ -z "$OBS_USER" ] || [ -z "$OBS_PASSWORD" ]; then
-            echo "OBS_USER and OBS_PASSWORD secrets are required" >&2
-            exit 1
+            echo "::warning::OBS_USER or OBS_PASSWORD is empty; publishing the source tarball only."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
           cat > "$RUNNER_TEMP/oscrc" <<EOF
           [general]
           apiurl = https://api.opensuse.org
@@ -114,7 +124,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/oscrc"
 
       - name: Commit sources to OBS
-        if: github.event_name == 'push'
+        if: steps.osc.outputs.skip != 'true' && (github.event_name == 'push' || inputs.commit_obs == true)
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
@@ -138,6 +148,7 @@ jobs:
           )
 
       - name: Wait for OBS binaries
+        if: steps.osc.outputs.skip != 'true'
         run: |
           python3 scripts/obs_wait.py \
             --config "$RUNNER_TEMP/oscrc" \
@@ -146,6 +157,7 @@ jobs:
             --version "${{ steps.ver.outputs.version }}"
 
       - name: Collect OBS binaries
+        if: steps.osc.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
@@ -181,6 +193,15 @@ jobs:
             echo "expected source tarball plus at least one OBS package" >&2
             exit 1
           fi
+
+      - name: Stage source tarball
+        if: steps.osc.outputs.skip == 'true'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-assets"
+          cp -f "$OBS_PACKAGE-$VERSION.tar.xz" "$RUNNER_TEMP/release-assets/"
+          ls -l "$RUNNER_TEMP/release-assets"
 
       - name: Publish GitHub Release
         env:
