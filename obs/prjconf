@@ -1,0 +1,5 @@
+# Resolve Debian virtual-package "have choice" so Testing/13 can build.
+Prefer: libselinux-dev
+Prefer: libselinux1-dev
+Prefer: libjpeg-dev
+Prefer: libjpeg62-turbo-dev

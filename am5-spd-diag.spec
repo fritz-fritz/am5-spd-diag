@@ -24,6 +24,9 @@ License:        MIT
 Group:          System/Monitoring
 URL:            https://github.com/fritz-fritz/am5-spd-diag
 Source0:        %{name}-%{version}.tar.xz
+Source1:        %{name}-%{version}-vendor.tar.zst
+# Official rustc 1.92 (build-time only). Fetched by make osc-fetch-rust / GHA.
+Source2:        rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
 ExclusiveArch:  x86_64
 BuildRequires:  cargo
 BuildRequires:  gcc
@@ -34,6 +37,8 @@ BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  python3
 BuildRequires:  rust
 BuildRequires:  systemd-rpm-macros
+BuildRequires:  xz
+BuildRequires:  zstd
 Requires:       systemd
 Recommends:     dmidecode
 Recommends:     i2c-tools
@@ -52,7 +57,10 @@ removed.
 %setup -q
 
 %build
-# Source tarball includes vendor/ and .cargo/config.toml from `make dist`.
+# Source0 has no vendor/. Extract Source1 and install Source2 rustc to
+# /tmp/am5-rust (path without ':') so every OBS chroot uses rustc 1.92.
+sh %{_builddir}/%{name}-%{version}/scripts/obs_prep.sh %{SOURCE1} %{SOURCE2}
+export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_build
 
@@ -61,6 +69,7 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_install PREFIX=%{_prefix} DOCDIR=%{_docdir}/%{name}
 
 %check
+export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_build test
 
@@ -90,7 +99,11 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %{_datadir}/icons/hicolor/128x128/apps/org.opensuse.am5spdDiag.png
 %{_datadir}/icons/hicolor/256x256/apps/org.opensuse.am5spdDiag.png
 %{_datadir}/dbus-1/services/org.opensuse.am5spdDiag.service
+# Leap 16 does not own these directories on the polkit package.
+%dir %{_datadir}/polkit-1
+%dir %{_datadir}/polkit-1/actions
 %{_datadir}/polkit-1/actions/org.opensuse.am5-spd-diag.snapshot.policy
+%dir %{_datadir}/polkit-1/rules.d
 %{_datadir}/polkit-1/rules.d/org.opensuse.am5-spd-diag.rules
 %{_unitdir}/am5-spd-diag.service
 %{_unitdir}/am5-spd-diag-pre-sleep.service

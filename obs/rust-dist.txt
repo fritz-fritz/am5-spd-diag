@@ -1,0 +1,7 @@
+# Official standalone rustc used as OBS Source2 (build-time only).
+# The compiler is built against old glibc (~2.17) so it runs on Ubuntu 24.04,
+# Debian 13, Fedora 43, and Leap 16. Each OBS chroot still links the *output*
+# binary against that distro's glibc and GTK.
+# make dist does not download this. GHA and `make osc-fetch-rust` do.
+URL=https://static.rust-lang.org/dist/rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
+SHA256=d2ccef59dd9f7439f2c694948069f789a044dc1addcc0803613232af8f88ee0c

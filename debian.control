@@ -2,7 +2,7 @@ Source: am5-spd-diag
 Section: admin
 Priority: optional
 Maintainer: Fritz <code@fritztech.net>
-Build-Depends: debhelper (>= 13), make, rustc, cargo, libgtk-4-dev, pkg-config, python3
+Build-Depends: debhelper (>= 13), make, rustc, cargo, libgtk-4-dev, pkg-config, python3, systemd, zstd, xz-utils
 Standards-Version: 4.6.2
 Homepage: https://github.com/fritz-fritz/am5-spd-diag
 Rules-Requires-Root: no

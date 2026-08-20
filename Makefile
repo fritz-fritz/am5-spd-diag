@@ -40,7 +40,17 @@ BIN_DEBUG = $(or $(CARGO_TARGET_DIR),target)/debug/$(NAME)
 BIN_RELEASE = $(or $(CARGO_TARGET_DIR),target)/release/$(NAME)
 NOTIFY_RELEASE = $(or $(CARGO_TARGET_DIR),target)/release/$(NAME)-notify
 
-.PHONY: build test test-tool test-packaging bump bump-check install uninstall uninstall-purge dist vendor
+MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
+DIST_PARENT ?= $(abspath $(CURDIR)/..)
+RUST_DIST_TXT := $(MAKEFILE_DIR)obs/rust-dist.txt
+RUST_DIST_FILE := rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
+REPO ?= openSUSE_Tumbleweed
+ARCH ?= x86_64
+OSC_REPOS ?= openSUSE_Tumbleweed openSUSE_Slowroll 16.0 Fedora_44 Fedora_43 \
+	xUbuntu_26.04 xUbuntu_24.04 Debian_Testing Debian_13
+
+.PHONY: build test test-tool test-packaging bump bump-check install uninstall uninstall-purge dist vendor \
+	osc-fetch-rust osc-build osc-matrix osc-meta
 
 build:
 	$(CARGO) build --release -p am5-spd-diag $(CARGOFLAGS)
@@ -61,6 +71,9 @@ test-packaging:
 	python3 scripts/bump_version.py --check
 	python3 -m py_compile scripts/bump_version.py scripts/gen_changelogs.py \
 	  scripts/obs_wait.py scripts/obs_release.py scripts/release_notes.py
+	sh -n scripts/obs_prep.sh
+	sh -n scripts/osc_fetch_rust.sh
+	bash -n scripts/osc_build.sh
 	python3 scripts/release_notes.py --version dummy --sha256 deadbeef | grep -q 'OBS download page'
 	if [ -f am5-spd-diag.changes ]; then python3 scripts/gen_changelogs.py --check; fi
 	if [ -d debian ]; then \
@@ -292,27 +305,59 @@ vendor:
 	$(CARGO) vendor --locked vendor > .cargo/config.toml
 	@echo "Vendored crates into vendor/ (.cargo/config.toml for OBS --offline)"
 
-# Snapshot the vendored tree to /tmp, then pack that frozen copy with an
-# absolute -f path. Packing the live checkout lets GNU tar exit 1 ("file
-# changed as we read it") after cargo vendor, and a relative -f can land
-# the archive inside the tree instead of the parent the release workflow
-# copies from. Keep packaging metadata in Source0: OBS %check runs
+# Source0: git snapshot without vendor/ or rustc. Source1: vendor.tar.zst.
+# Source2 (official rustc) is fetched by osc-fetch-rust / GHA, not dist.
+# Snapshot to /tmp and pack with an absolute -f path so GNU tar does not
+# exit 1 ("file changed as we read it") and a relative -f cannot land
+# inside the tree. Keep packaging metadata in Source0: OBS %check runs
 # `make test`, which reads $(NAME).changes, $(NAME).spec, and debian/.
-# OBS still builds from the spec/debian.* committed next to Source0.
 dist: vendor
 	@set -eu; \
-	parent="$(abspath $(CURDIR)/..)"; \
+	parent="$(DIST_PARENT)"; \
 	snap=$$(mktemp -d /tmp/$(NAME)-dist.XXXXXX); \
-	out="/tmp/$(NAME)-$(VERSION).$$$$.tar.xz"; \
-	trap 'rm -rf "$$snap"; rm -f "$$out"' EXIT; \
+	src_out="/tmp/$(NAME)-$(VERSION).$$$$.tar.xz"; \
+	vend_out="/tmp/$(NAME)-$(VERSION)-vendor.$$$$.tar.zst"; \
+	trap 'rm -rf "$$snap"; rm -f "$$src_out" "$$vend_out"' EXIT; \
 	cp -a "$(CURDIR)" "$$snap/$(NAME)"; \
 	rm -rf "$$snap/$(NAME)/target" "$$snap/$(NAME)/.git" \
 	  "$$snap/$(NAME)/.osc" \
 	  "$$snap/$(NAME)/.cargo-home"; \
-	rm -f "$$snap/$(NAME)/"*.tar.xz; \
-	tar -C "$$snap" --exclude=__pycache__ --exclude='*.pyc' -cJf "$$out" \
+	rm -f "$$snap/$(NAME)/"*.tar.xz "$$snap/$(NAME)/"*.tar.zst; \
+	test -d "$$snap/$(NAME)/vendor"; \
+	test -f "$$snap/$(NAME)/.cargo/config.toml"; \
+	tar -C "$$snap/$(NAME)" -I 'zstd -T0 -19' -cf "$$vend_out" \
+	  vendor .cargo/config.toml; \
+	test -s "$$vend_out"; \
+	rm -rf "$$snap/$(NAME)/vendor"; \
+	rm -f "$$snap/$(NAME)/.cargo/config.toml"; \
+	tar -C "$$snap" --exclude=__pycache__ --exclude='*.pyc' -cJf "$$src_out" \
 	  --transform 's,^$(NAME),$(NAME)-$(VERSION),' \
 	  $(NAME); \
-	test -s "$$out"; \
-	mv -f "$$out" "$$parent/$(NAME)-$(VERSION).tar.xz"; \
-	echo "Wrote $$parent/$(NAME)-$(VERSION).tar.xz"
+	test -s "$$src_out"; \
+	tar -tJf "$$src_out" > "$$snap/src.list"; \
+	if grep -q '/vendor/' "$$snap/src.list"; then \
+	  echo "Source0 must not contain vendor/" >&2; \
+	  exit 1; \
+	fi; \
+	mv -f "$$src_out" "$$parent/$(NAME)-$(VERSION).tar.xz"; \
+	mv -f "$$vend_out" "$$parent/$(NAME)-$(VERSION)-vendor.tar.zst"; \
+	echo "Wrote $$parent/$(NAME)-$(VERSION).tar.xz"; \
+	echo "Wrote $$parent/$(NAME)-$(VERSION)-vendor.tar.zst"
+
+osc-fetch-rust:
+	$(MAKEFILE_DIR)scripts/osc_fetch_rust.sh "$(DIST_PARENT)" "$(RUST_DIST_TXT)"
+
+osc-build: dist osc-fetch-rust
+	$(MAKEFILE_DIR)scripts/osc_build.sh $(REPO) $(ARCH)
+
+osc-matrix: dist osc-fetch-rust
+	@failed=0; \
+	for r in $(OSC_REPOS); do \
+	  echo "==== osc build $$r $(ARCH) ===="; \
+	  $(MAKEFILE_DIR)scripts/osc_build.sh $$r $(ARCH) || failed=1; \
+	done; \
+	exit $$failed
+
+osc-meta:
+	osc meta prjconf home:fritz-fritz -F $(MAKEFILE_DIR)obs/prjconf
+	osc meta pkg home:fritz-fritz $(NAME) -F $(MAKEFILE_DIR)obs/package-meta.xml

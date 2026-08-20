@@ -5,6 +5,7 @@ resolver = "2"
 [workspace.package]
 version = "1.0.0"
 edition = "2021"
+rust-version = "1.92"
 license = "MIT"
 authors = ["Fritz <code@fritztech.net>"]
 repository = "https://github.com/fritz-fritz/am5-spd-diag"

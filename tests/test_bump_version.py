@@ -279,6 +279,37 @@ def test_dist_keeps_packaging_metadata_in_source0() -> None:
     assert (ROOT / "debian/changelog").is_file()
 
 
+def test_dist_splits_vendor_and_skips_rustc() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    dist = makefile.split("\ndist:", 1)[1].split("\n\n", 1)[0]
+    assert "-vendor.tar.zst" in dist
+    assert "rm -rf" in dist
+    assert "vendor" in dist
+    assert "'/vendor/'" in dist or '"/vendor/"' in dist or "/vendor/" in dist
+    assert "static.rust-lang.org" not in dist
+    assert "osc-fetch-rust" in makefile
+    assert (ROOT / "obs/rust-dist.txt").is_file()
+    pin = (ROOT / "obs/rust-dist.txt").read_text(encoding="utf-8")
+    assert "https://static.rust-lang.org/dist/rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz" in pin
+    assert "d2ccef59dd9f7439f2c694948069f789a044dc1addcc0803613232af8f88ee0c" in pin
+
+
+def test_obs_package_meta_disables_eol_repos() -> None:
+    meta = (ROOT / "obs/package-meta.xml").read_text(encoding="utf-8")
+    for repo in (
+        "xUbuntu_25.10",
+        "xUbuntu_25.04",
+        "xUbuntu_24.10",
+        "Fedora_Rawhide",
+        "AppImage",
+        "Debian_12",
+    ):
+        assert f'repository="{repo}"' in meta
+    prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
+    assert "Prefer: libselinux-dev" in prjconf
+    assert "Prefer: libjpeg-dev" in prjconf
+
+
 def _write_tree(root: Path) -> None:
     (root / "man").mkdir()
     (root / "Cargo.toml").write_text(CARGO, encoding="utf-8")
@@ -301,4 +332,6 @@ if __name__ == "__main__":
     test_obs_release_gate()
     test_release_notes_mentions_obs()
     test_dist_keeps_packaging_metadata_in_source0()
+    test_dist_splits_vendor_and_skips_rustc()
+    test_obs_package_meta_disables_eol_repos()
     print("ok")
