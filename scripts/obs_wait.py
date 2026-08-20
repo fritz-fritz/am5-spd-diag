@@ -7,10 +7,12 @@ import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 
-SKIP = {"disabled", "excluded"}
-BAD = {"failed", "unresolvable", "broken"}
+SKIP = {"disabled", "excluded", "unresolvable"}
+BAD = {"failed", "broken"}
 DONE = {"succeeded"}
+LIVE = {"scheduled", "dispatching", "building", "blocked", "signing", "finished"}
 
 
 def osc(config: str | None, *args: str) -> str:
@@ -32,7 +34,27 @@ def results(config: str | None, project: str, package: str) -> list[tuple[str, s
             if status.get("package") != package:
                 continue
             rows.append((repo, arch, status.get("code") or "unknown"))
-    return rows
+    return collapse_results(rows)
+
+
+def collapse_results(rows: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
+    """One code per repo/arch. Prefer a live rebuild over a stale succeeded row."""
+    grouped: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for repo, arch, code in rows:
+        grouped[(repo, arch)].append(code)
+    return [(repo, arch, classify_codes(codes)) for (repo, arch), codes in grouped.items()]
+
+
+def classify_codes(codes: list[str]) -> str:
+    if any(code in LIVE for code in codes):
+        return next(code for code in codes if code in LIVE)
+    if any(code in BAD for code in codes):
+        return next(code for code in codes if code in BAD)
+    if any(code in SKIP for code in codes):
+        return next(code for code in codes if code in SKIP)
+    if any(code in DONE for code in codes):
+        return "succeeded"
+    return codes[-1] if codes else "unknown"
 
 
 def binary_names(config: str | None, project: str, package: str, repo: str, arch: str) -> list[str]:
@@ -57,13 +79,15 @@ def is_payload(name: str, version: str) -> bool:
 
 def snapshot(
     config: str | None, project: str, package: str, version: str
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str], list[str]]:
     pending: list[str] = []
     failed: list[str] = []
+    skipped: list[str] = []
     ready: list[str] = []
     for repo, arch, code in results(config, project, package):
         label = f"{repo}/{arch}: {code}"
         if code in SKIP:
+            skipped.append(label)
             continue
         if code in BAD:
             failed.append(label)
@@ -74,7 +98,7 @@ def snapshot(
             ready.append(label)
             continue
         pending.append(label)
-    return pending, failed, ready
+    return pending, failed, skipped, ready
 
 
 def download_binaries(
@@ -84,7 +108,9 @@ def download_binaries(
     version: str,
     dest: str,
 ) -> int:
-    pending, failed, ready = snapshot(config, project, package, version)
+    pending, failed, skipped, ready = snapshot(config, project, package, version)
+    if skipped:
+        print("skip:   " + ", ".join(skipped))
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
         return 1
@@ -139,7 +165,9 @@ def main(argv: list[str] | None = None) -> int:
     deadline = time.monotonic() + args.timeout
     while True:
         try:
-            pending, failed, ready = snapshot(args.config, args.project, args.package, args.version)
+            pending, failed, skipped, ready = snapshot(
+                args.config, args.project, args.package, args.version
+            )
         except subprocess.CalledProcessError as err:
             print(f"obs_wait: osc failed: {err}", file=sys.stderr)
             if time.monotonic() >= deadline:
@@ -148,14 +176,16 @@ def main(argv: list[str] | None = None) -> int:
             continue
         print("ready:  " + (", ".join(ready) if ready else "(none)"))
         print("wait:   " + (", ".join(pending) if pending else "(none)"))
+        print("skip:   " + (", ".join(skipped) if skipped else "(none)"))
         if failed:
             print("failed: " + ", ".join(failed), file=sys.stderr)
             return 1
         if not pending and ready:
-            print("obs_wait: all enabled repositories have versioned binaries")
+            print("obs_wait: versioned binaries are ready")
             return 0
         if not pending and not ready:
-            print("obs_wait: no enabled repositories yet")
+            print("obs_wait: no repositories produced versioned binaries", file=sys.stderr)
+            return 1
         if time.monotonic() >= deadline:
             print("obs_wait: timed out waiting for OBS binaries", file=sys.stderr)
             return 1

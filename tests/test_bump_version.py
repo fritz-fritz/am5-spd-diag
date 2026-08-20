@@ -209,6 +209,20 @@ def test_obs_wait_payload() -> None:
     assert not wait.is_payload("am5-spd-diag-1.0.0-0.src.rpm", "1.0.0")
     assert not wait.is_payload("am5-spd-diag-1.0.0-0.x86_64.rpm", "2.0.0")
     assert not wait.is_payload("am5-spd-diag-debuginfo-1.0.0-0.x86_64.rpm", "1.0.0")
+    assert wait.classify_codes(["succeeded", "unresolvable"]) == "unresolvable"
+    assert wait.classify_codes(["succeeded", "building"]) == "building"
+    assert wait.classify_codes(["succeeded", "excluded"]) == "excluded"
+    assert wait.classify_codes(["failed"]) == "failed"
+    assert wait.collapse_results(
+        [
+            ("Debian_12", "x86_64", "succeeded"),
+            ("Debian_12", "x86_64", "unresolvable"),
+            ("openSUSE_Tumbleweed", "x86_64", "building"),
+        ]
+    ) == [
+        ("Debian_12", "x86_64", "unresolvable"),
+        ("openSUSE_Tumbleweed", "x86_64", "building"),
+    ]
 
 
 def test_obs_release_gate() -> None:
