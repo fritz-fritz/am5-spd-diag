@@ -209,18 +209,32 @@ jobs:
           TAG: ${{ steps.ver.outputs.tag }}
           VERSION: ${{ steps.ver.outputs.version }}
           REPO: ${{ github.repository }}
+          PENDING_OBS: ${{ steps.osc.outputs.skip }}
         working-directory: .
         run: |
           tarball="am5-spd-diag/am5-spd-diag-$VERSION.tar.xz"
           sha256=$(sha256sum "$tarball" | awk '{print $1}')
+          extra=()
+          if [ "$PENDING_OBS" = true ]; then
+            extra+=(--pending-obs)
+          fi
           notes=$(python3 am5-spd-diag/scripts/release_notes.py \
             --version "$VERSION" \
             --sha256 "$sha256" \
             --download "$OBS_DOWNLOAD" \
-            --changes am5-spd-diag/am5-spd-diag.changes)
+            --changes am5-spd-diag/am5-spd-diag.changes \
+            "${extra[@]}")
           assets=("$RUNNER_TEMP"/release-assets/*)
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${assets[@]}" --repo "$REPO" --clobber
+            existing=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+            for a in "${assets[@]}"; do
+              name=$(basename "$a")
+              if printf '%s\n' "$existing" | grep -qxF "$name"; then
+                echo "keeping existing $name (immutable releases cannot replace assets)"
+                continue
+              fi
+              gh release upload "$TAG" "$a" --repo "$REPO"
+            done
             gh release edit "$TAG" --repo "$REPO" --notes "$notes"
           else
             gh release create "$TAG" "${assets[@]}" --repo "$REPO" --title "$TAG" --notes "$notes"

@@ -19,14 +19,32 @@ DEFAULT_DOWNLOAD = (
 )
 
 
-def notes(version: str, sha256: str, download: str, changes_path: Path) -> str:
+def notes(
+    version: str,
+    sha256: str,
+    download: str,
+    changes_path: Path,
+    obs_built: bool = True,
+) -> str:
     entries = gen.parse_changes(changes_path.read_text(encoding="utf-8"))
     bullets = "\n".join(f"- {b}" for b in entries[0].bullets) if entries else f"- {version}"
+    if obs_built:
+        lead = (
+            f"Packages for {version} were built on the Open Build Service.\n"
+            "\n"
+            f"Install from the [OBS download page]({download}) (recommended). "
+            "GitHub attachments are convenience copies for this tag.\n"
+        )
+    else:
+        lead = (
+            f"Source tarball for {version}. Open Build Service packages were not "
+            "attached in this run (empty `OBS_PASSWORD` Actions secret).\n"
+            "\n"
+            f"Install from the [OBS download page]({download}) once packages appear. "
+            "GitHub attachments are convenience copies for this tag.\n"
+        )
     return (
-        f"Packages for {version} were built on the Open Build Service.\n"
-        "\n"
-        f"Install from the [OBS download page]({download}) (recommended). "
-        "GitHub attachments are convenience copies for this tag.\n"
+        f"{lead}"
         "\n"
         "## Changes\n"
         "\n"
@@ -48,8 +66,21 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=ROOT / f"{PACKAGE}.changes",
     )
+    parser.add_argument(
+        "--pending-obs",
+        action="store_true",
+        help="Notes for a tarball-only GitHub Release (OBS skipped)",
+    )
     args = parser.parse_args(argv)
-    sys.stdout.write(notes(args.version, args.sha256, args.download, args.changes))
+    sys.stdout.write(
+        notes(
+            args.version,
+            args.sha256,
+            args.download,
+            args.changes,
+            obs_built=not args.pending_obs,
+        )
+    )
     return 0
 
 

@@ -219,6 +219,15 @@ def test_release_notes_mentions_obs() -> None:
     assert "OBS download page" in text
     assert "abc" in text
     assert "1.0.0" in text
+    pending = notes.notes(
+        "1.0.0",
+        "abc",
+        notes.DEFAULT_DOWNLOAD,
+        ROOT / "am5-spd-diag.changes",
+        obs_built=False,
+    )
+    assert "empty `OBS_PASSWORD`" in pending
+    assert "were built on the Open Build Service" not in pending
 
 
 def _write_tree(root: Path) -> None:
