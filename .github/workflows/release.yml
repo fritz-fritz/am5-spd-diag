@@ -215,7 +215,10 @@ jobs:
           tarball="am5-spd-diag/am5-spd-diag-$VERSION.tar.xz"
           sha256=$(sha256sum "$tarball" | awk '{print $1}')
           extra=()
-          if [ "$PENDING_OBS" = true ]; then
+          # workflow_dispatch runs this file from master but checks out the tag.
+          # --pending-obs exists only on trees after that flag landed.
+          if [ "$PENDING_OBS" = true ] && \
+             python3 am5-spd-diag/scripts/release_notes.py -h 2>&1 | grep -q -- '--pending-obs'; then
             extra+=(--pending-obs)
           fi
           notes=$(python3 am5-spd-diag/scripts/release_notes.py \
@@ -235,7 +238,11 @@ jobs:
               fi
               gh release upload "$TAG" "$a" --repo "$REPO"
             done
-            gh release edit "$TAG" --repo "$REPO" --notes "$notes"
+            if [ "$PENDING_OBS" != true ] || [ "${#extra[@]}" -gt 0 ]; then
+              gh release edit "$TAG" --repo "$REPO" --notes "$notes"
+            else
+              echo "leaving existing release notes (tag tree cannot describe a skipped OBS run)"
+            fi
           else
             gh release create "$TAG" "${assets[@]}" --repo "$REPO" --title "$TAG" --notes "$notes"
           fi
