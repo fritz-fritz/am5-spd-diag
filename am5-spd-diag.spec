@@ -26,7 +26,7 @@ URL:            https://github.com/fritz-fritz/am5-spd-diag
 Source0:        %{name}-%{version}.tar.xz
 Source1:        %{name}-%{version}-vendor.tar.zst
 # Official rustc (build-time only). Version is obs/rust-dist.txt.
-Source2:        rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
+Source2:        rust-1.97.1-x86_64-unknown-linux-gnu.tar.xz
 ExclusiveArch:  x86_64
 BuildRequires:  cargo
 BuildRequires:  gcc
@@ -117,8 +117,10 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 
 %changelog
 * Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
-- Split OBS sources and pin official rustc 1.92 so older distros can build.
-  Not a Ghost DIMM behavior change.
+- Split OBS sources and pin official rustc from rust-toolchain.toml so older
+  distros can build. Dependabot bumps the toolchain; OBS Source2 and CI
+  follow that pin. GTK window targets GTK 4.8 so Debian 12 (oldstable)
+  packages. Not a Ghost DIMM behavior change.
 
 * Wed Aug 19 2026 Fritz <code@fritztech.net> - 1.0.1
 - Make /var/log/am5-spd-diag 0755 root:root and write capture state with

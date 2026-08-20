@@ -166,8 +166,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev pkg-config python3 osc zstd xz-utils curl
 
-      # Tag is the rustc version (not an action release). Must match obs/rust-dist.txt.
-      - uses: dtolnay/rust-toolchain@1.92.0
+      - name: Read rustc pin
+        id: rust
+        run: echo "version=$(../workflow-src/scripts/rust_pin.sh channel rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+          components: rustfmt, clippy
 
       - name: Check versions match tag
         run: python3 scripts/bump_version.py --check "${{ steps.ver.outputs.version }}"

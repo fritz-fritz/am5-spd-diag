@@ -156,9 +156,9 @@ def write_outputs(debian_text: str, spec_text: str) -> None:
 
 
 def debian_check_paths(root: Path = ROOT) -> list[Path]:
-    """debian/ may be absent from Source0; only require debian/changelog in a git tree."""
+    """debian/changelog is a git-tree copy. OBS debtransform rewrites it (suite)."""
     paths = [root / "debian.changelog"]
-    if (root / "debian").is_dir():
+    if (root / ".git").is_dir() and (root / "debian").is_dir():
         paths.append(root / "debian" / "changelog")
     return paths
 

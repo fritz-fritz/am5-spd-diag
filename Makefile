@@ -46,7 +46,7 @@ RUST_DIST_TXT := $(MAKEFILE_DIR)obs/rust-dist.txt
 REPO ?= openSUSE_Tumbleweed
 ARCH ?= x86_64
 OSC_REPOS ?= openSUSE_Tumbleweed openSUSE_Slowroll 16.0 Fedora_44 Fedora_43 \
-	xUbuntu_26.04 xUbuntu_24.04 Debian_Testing Debian_13
+	xUbuntu_26.04 xUbuntu_24.04 Debian_Testing Debian_13 Debian_12
 
 .PHONY: build test test-tool test-packaging bump bump-check rust-pin install uninstall uninstall-purge dist vendor \
 	osc-fetch-rust osc-build osc-matrix osc-meta

@@ -28,11 +28,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev pkg-config python3
 
-      # Tag is the rustc version (not an action release). Dependabot bumps it;
-      # dependabot-auto-merge runs scripts/sync_rust_pin.sh so OBS Source2,
-      # rust-toolchain.toml, and rust-version stay in lockstep.
-      - uses: dtolnay/rust-toolchain@1.92.0
+      - name: Read rustc pin
+        id: rust
+        run: echo "version=$(scripts/rust_pin.sh channel)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ steps.rust.outputs.version }}
           components: rustfmt, clippy
 
       - name: Check packaging versions agree

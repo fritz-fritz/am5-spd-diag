@@ -73,11 +73,20 @@ pin_rust_file() {
 
 install_rust() {
 	archive=$1
-	if [ -x "$RUST_PREFIX/bin/rustc" ]; then
-		log "reusing $RUST_PREFIX ($("$RUST_PREFIX/bin/rustc" --version))"
-		return 0
-	fi
 	rust_dir=$(basename "$archive" .tar.xz)
+	want=${rust_dir#rust-}
+	want=${want%-x86_64-unknown-linux-gnu}
+	if [ -x "$RUST_PREFIX/bin/rustc" ]; then
+		have=$("$RUST_PREFIX/bin/rustc" --version)
+		case "$have" in
+		*" $want "*)
+			log "reusing $RUST_PREFIX ($have)"
+			return 0
+			;;
+		esac
+		log "replacing $RUST_PREFIX ($have, want $want)"
+		rm -rf "$RUST_PREFIX"
+	fi
 	log "installing rustc from $archive -> $RUST_PREFIX"
 	stage=$(mktemp -d /tmp/am5-rust-dist.XXXXXX)
 	tar -C "$stage" -xf "$archive"

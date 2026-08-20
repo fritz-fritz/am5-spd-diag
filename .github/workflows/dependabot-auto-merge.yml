@@ -5,9 +5,9 @@
 # This repo keeps that off, so we wait for the CI job named `test` and then
 # squash-merge (Protect Main allows squash only).
 #
-# When Dependabot bumps dtolnay/rust-toolchain@X.Y.Z, sync the OBS rustc
-# tarball and rust-version on this PR before waiting for CI. GITHUB_TOKEN
-# pushes do not retrigger workflows, so dispatch CI onto the new HEAD.
+# When Dependabot bumps rust-toolchain.toml, sync the OBS rustc tarball
+# and rust-version on this PR before waiting for CI. GITHUB_TOKEN pushes
+# do not retrigger workflows, so dispatch CI onto the new HEAD.
 
 name: Dependabot auto-merge
 
@@ -33,7 +33,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
 
-      - name: Sync OBS rust pin with toolchain action
+      - name: Sync OBS rust pin with rust-toolchain.toml
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_REF: ${{ github.head_ref }}
@@ -46,9 +46,8 @@ jobs:
             echo "rust pin already in sync"
             exit 0
           fi
-          git add rust-toolchain.toml Cargo.toml obs/rust-dist.txt am5-spd-diag.spec \
-            .github/workflows/ci.yml .github/workflows/release.yml
-          git commit -m "Sync OBS rustc pin with dtolnay/rust-toolchain"
+          git add rust-toolchain.toml Cargo.toml obs/rust-dist.txt am5-spd-diag.spec
+          git commit -m "Sync OBS rustc pin with rust-toolchain.toml"
           git push origin "HEAD:$HEAD_REF"
           gh workflow run CI --ref "$HEAD_REF"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail if CI, rust-toolchain.toml, rust-version, spec Source2, and OBS pin disagree."""
+"""Fail if rust-toolchain.toml, rust-version, spec Source2, OBS pin, and workflows disagree."""
 from __future__ import annotations
 
 import re
@@ -8,9 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HOST = "x86_64-unknown-linux-gnu"
-TOOLCHAIN_RE = re.compile(
-    r"dtolnay/rust-toolchain@(stable|beta|nightly|master|[0-9]+\.[0-9]+\.[0-9]+)"
-)
+ACTION_TAG_RE = re.compile(r"dtolnay/rust-toolchain@([^\s]+)")
 
 
 def fail(msg: str) -> None:
@@ -56,31 +54,42 @@ def spec_source2(path: Path) -> str:
     raise AssertionError
 
 
-def workflow_tags(path: Path) -> list[str]:
+def check_workflow(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
-    tags = TOOLCHAIN_RE.findall(text)
+    rel = path.relative_to(ROOT)
+    tags = ACTION_TAG_RE.findall(text)
     if not tags:
-        fail(f"{path} has no dtolnay/rust-toolchain pin")
-    return tags
+        fail(f"{rel} has no dtolnay/rust-toolchain action")
+    for tag in tags:
+        tag = tag.strip()
+        if tag in {"stable", "beta", "nightly"} or re.fullmatch(
+            r"[0-9]+\.[0-9]+(?:\.[0-9]+)?", tag
+        ):
+            fail(
+                f"{rel} pins rustc via dtolnay/rust-toolchain@{tag}; "
+                "parse rust-toolchain.toml and pass toolchain:"
+            )
+    if "toolchain: ${{ steps.rust.outputs.version }}" not in text:
+        fail(f"{rel} must set with.toolchain from the parsed rust-toolchain.toml pin")
+    if "rust_pin.sh channel" not in text:
+        fail(f"{rel} must parse the pin with rust_pin.sh channel")
 
 
 def main() -> int:
+    channel = toolchain_channel(ROOT / "rust-toolchain.toml")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", channel):
+        fail(f"rust-toolchain.toml channel must be X.Y.Z (got {channel})")
+
     dist = parse_dist(ROOT / "obs/rust-dist.txt")
     version = dist["VERSION"]
-    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
-        fail(f"VERSION must be X.Y.Z (got {version})")
+    if version != channel:
+        fail(f"obs/rust-dist.txt VERSION {version} != rust-toolchain.toml {channel}")
     want_file = f"rust-{version}-{HOST}.tar.xz"
     want_url = f"https://static.rust-lang.org/dist/{want_file}"
     if dist["URL"] != want_url:
         fail(f"URL must be {want_url}")
     if not re.fullmatch(r"[0-9a-f]{64}", dist["SHA256"]):
         fail("SHA256 must be 64 lowercase hex chars")
-    if Path(dist["URL"]).name != want_file:
-        fail("URL basename does not match VERSION")
-
-    channel = toolchain_channel(ROOT / "rust-toolchain.toml")
-    if channel != version:
-        fail(f"rust-toolchain.toml channel {channel} != {version}")
 
     msrv = cargo_rust_version(ROOT / "Cargo.toml")
     if msrv != version:
@@ -91,10 +100,7 @@ def main() -> int:
         fail(f"spec Source2 {source2} != {want_file}")
 
     for rel in (".github/workflows/ci.yml", ".github/workflows/release.yml"):
-        tags = workflow_tags(ROOT / rel)
-        bad = [t for t in tags if t != version]
-        if bad:
-            fail(f"{rel} pins {tags}, want @{version} (not @stable)")
+        check_workflow(ROOT / rel)
 
     prep = (ROOT / "scripts/obs_prep.sh").read_text(encoding="utf-8")
     if re.search(r"rust-1\.[0-9]+\.[0-9]+", prep):

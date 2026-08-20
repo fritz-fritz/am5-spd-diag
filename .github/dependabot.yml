@@ -9,15 +9,15 @@ updates:
         patterns:
           - "gtk4*"
           - "gdk4*"
-  # dtolnay/rust-toolchain@X.Y.Z installs rustc X.Y.Z (the tag is not an
-  # action release). Keep CI and Release in one PR; auto-merge runs
-  # scripts/sync_rust_pin.sh so OBS Source2, rust-toolchain.toml, and
-  # rust-version follow the same bump.
+  # rust-toolchain.toml is the rustc pin. Auto-merge runs sync_rust_pin.sh
+  # so OBS Source2, rust-version, and spec Source2 follow the same PR.
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    groups:
-      rust-toolchain:
-        patterns:
-          - "dtolnay/rust-toolchain"
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain

@@ -300,6 +300,15 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     assert "dtolnay/rust-toolchain@stable" not in ci
     assert "dtolnay/rust-toolchain@stable" not in release
+    assert "dtolnay/rust-toolchain@1." not in ci
+    assert "dtolnay/rust-toolchain@1." not in release
+    assert "toolchain: ${{ steps.rust.outputs.version }}" in ci
+    assert "toolchain: ${{ steps.rust.outputs.version }}" in release
+    assert "rust_pin.sh channel" in ci
+    assert "rust_pin.sh channel" in release
+    assert "package-ecosystem: rust-toolchain" in (
+        ROOT / ".github/dependabot.yml"
+    ).read_text(encoding="utf-8")
     assert "needs.gate.outputs.obs" in release
     assert "ahead_by" in release
     assert "github.event_name == 'push' || inputs.commit_obs" not in release
@@ -313,9 +322,9 @@ def test_obs_package_meta_disables_eol_repos() -> None:
         "xUbuntu_24.10",
         "Fedora_Rawhide",
         "AppImage",
-        "Debian_12",
     ):
         assert f'repository="{repo}"' in meta
+    assert 'repository="Debian_12"' not in meta
     prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
     assert "Prefer: libselinux-dev" in prjconf
     assert "Prefer: libjpeg-dev" in prjconf

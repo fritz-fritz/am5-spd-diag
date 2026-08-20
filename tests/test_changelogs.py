@@ -81,6 +81,12 @@ def test_check_without_debian_dir() -> None:
         (root / "debian.changelog").write_text(debian_text, encoding="utf-8")
         (root / "am5-spd-diag.spec").write_text(spec_text, encoding="utf-8")
         assert gen.check_outputs(debian_text, spec_text, root=root) == []
+        (root / "debian").mkdir()
+        (root / "debian" / "changelog").write_text(
+            "am5-spd-diag (1.0.1-1) bookworm; urgency=medium\n",
+            encoding="utf-8",
+        )
+        assert gen.check_outputs(debian_text, spec_text, root=root) == []
 
 
 if __name__ == "__main__":

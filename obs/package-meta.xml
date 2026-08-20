@@ -10,7 +10,6 @@
     <disable repository="xUbuntu_24.10"/>
     <disable repository="Fedora_Rawhide"/>
     <disable repository="AppImage"/>
-    <disable repository="Debian_12"/>
     <disable arch="i586"/>
     <disable arch="aarch64"/>
     <disable arch="armv7l"/>
