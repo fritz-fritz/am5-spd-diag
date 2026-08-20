@@ -4,10 +4,13 @@ use crate::dimm::{format_dimm_summary, summary_flags as dimm_summary_flags};
 use crate::hub::{notify_all, write_baseline};
 use crate::i2c::{probe_hubs, recover_stuck};
 use crate::paths::share_dir;
+use crate::safe_fs::{copy_nofollow, create_nofollow, open_append_nofollow, write_nofollow};
 use crate::schema::iter_json_objects;
-use crate::smbios::{collect_memory_dump, collect_system_dump, parse_memory_devices, write_spd_page0_files};
+use crate::smbios::{
+    collect_memory_dump, collect_system_dump, parse_memory_devices, write_spd_page0_files,
+};
 use serde_json::{json, Value};
-use std::fs::{self, File, OpenOptions};
+use std::fs;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
@@ -18,21 +21,17 @@ pub fn capture_main(args: &[String]) -> i32 {
     let event = args.first().map(String::as_str).unwrap_or("manual");
     let sleep_type = args.get(1).cloned().unwrap_or_default();
     match event {
-        "pre" | "post" | "boot" | "shutdown" | "reboot" | "poweroff"
-        | "suspend-pre" | "suspend-post" | "hibernate-pre" | "hibernate-post" | "manual"
-        | "recover" => {}
+        "pre" | "post" | "boot" | "shutdown" | "reboot" | "poweroff" | "suspend-pre"
+        | "suspend-post" | "hibernate-pre" | "hibernate-post" | "manual" | "recover" => {}
         _ => {
             eprintln!("am5-spd-diag capture: unknown event: {event}");
-            return 0;
+            return 1;
         }
     }
     let cfg = load_config(&share_dir());
     if std::env::var("AM5_SPD_DIAG_IN_TIMEOUT").is_err() {
         if let Ok(status) = Command::new("timeout")
-            .args([
-                "--preserve-status",
-                &cfg.capture_timeout_sec().to_string(),
-            ])
+            .args(["--preserve-status", &cfg.capture_timeout_sec().to_string()])
             .env("AM5_SPD_DIAG_IN_TIMEOUT", "1")
             .arg(std::env::current_exe().unwrap_or_else(|_| "am5-spd-diag".into()))
             .arg("capture")
@@ -40,14 +39,16 @@ pub fn capture_main(args: &[String]) -> i32 {
             .arg(&sleep_type)
             .status()
         {
-            let _ = status;
-            return 0;
+            return status.code().unwrap_or(1);
         }
     }
-    if let Err(err) = capture_event(event, &sleep_type, &cfg) {
-        eprintln!("am5-spd-diag capture: capture failed for event={event} (ignored): {err}");
+    match capture_event(event, &sleep_type, &cfg) {
+        Ok(_) => 0,
+        Err(err) => {
+            eprintln!("am5-spd-diag capture: capture failed for event={event}: {err}");
+            1
+        }
     }
-    0
 }
 
 /// Clear stuck MR11 hubs, then capture a `recover` timeline event (hub.json + recover.json).
@@ -57,7 +58,7 @@ pub fn recover_and_record() -> Value {
     let state_dir = cfg.state_dir();
     let _ = fs::create_dir_all(&state_dir);
     let pending = state_dir.join("pending-recover.json");
-    let _ = fs::write(
+    let _ = write_nofollow(
         &pending,
         format!(
             "{}\n",
@@ -72,7 +73,9 @@ pub fn recover_and_record() -> Value {
 }
 
 fn utc_now() -> String {
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     chrono::DateTime::from_timestamp(t.as_secs() as i64, t.subsec_nanos())
         .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).unwrap())
         .format("%Y%m%dT%H%M%S%.fZ")
@@ -210,20 +213,26 @@ fn classify_boot_kind(timeline: &Path, current_boot: &str) -> String {
 fn append_timeline(state_dir: &Path, rec: &Value) -> std::io::Result<()> {
     fs::create_dir_all(state_dir)?;
     let lock_path = state_dir.join("timeline.lock");
-    let lock = OpenOptions::new().create(true).append(true).open(&lock_path)?;
+    let lock = open_append_nofollow(&lock_path)?;
     let rc = unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) };
     if rc != 0 {
         return Err(std::io::Error::last_os_error());
     }
     let timeline = state_dir.join("timeline.jsonl");
-    let mut f = OpenOptions::new().create(true).append(true).open(&timeline)?;
-    writeln!(f, "{}", serde_json::to_string(rec).unwrap_or_else(|_| "{}".into()))?;
+    let mut f = open_append_nofollow(&timeline)?;
+    writeln!(
+        f,
+        "{}",
+        serde_json::to_string(rec).unwrap_or_else(|_| "{}".into())
+    )?;
     Ok(())
 }
 
 fn prune_old_events(events_dir: &Path, timeline: &Path, keep_days: u64) {
     let cutoff = SystemTime::now()
-        .checked_sub(std::time::Duration::from_secs(keep_days.saturating_mul(86400)))
+        .checked_sub(std::time::Duration::from_secs(
+            keep_days.saturating_mul(86400),
+        ))
         .unwrap_or(UNIX_EPOCH);
     if let Ok(rd) = fs::read_dir(events_dir) {
         for entry in rd.flatten() {
@@ -255,7 +264,7 @@ fn prune_old_events(events_dir: &Path, timeline: &Path, keep_days: u64) {
     } else {
         format!("{}\n", kept.join("\n"))
     };
-    if fs::write(&tmp, body).is_ok() {
+    if write_nofollow(&tmp, body).is_ok() {
         let _ = fs::rename(tmp, timeline);
     }
 }
@@ -286,12 +295,12 @@ fn write_system_files(dir: &Path) {
             dmi.push('\n');
         }
     }
-    let _ = fs::write(dir.join("dmi-sysfs.txt"), dmi);
+    let _ = write_nofollow(dir.join("dmi-sysfs.txt"), dmi);
     if Path::new("/etc/os-release").is_file() {
-        let _ = fs::copy("/etc/os-release", dir.join("os-release.txt"));
+        let _ = copy_nofollow("/etc/os-release", dir.join("os-release.txt"));
     }
     if let Ok(out) = Command::new("uname").arg("-a").output() {
-        let _ = fs::write(dir.join("uname.txt"), out.stdout);
+        let _ = write_nofollow(dir.join("uname.txt"), out.stdout);
     }
     let boot = if Path::new("/sys/firmware/efi").is_dir() {
         "UEFI"
@@ -302,7 +311,10 @@ fn write_system_files(dir: &Path) {
         .get("machine")
         .cloned()
         .unwrap_or_else(|| "unknown".into());
-    let _ = fs::write(dir.join("firmware.txt"), format!("boot_mode={boot}\narch={arch}\n"));
+    let _ = write_nofollow(
+        dir.join("firmware.txt"),
+        format!("boot_mode={boot}\narch={arch}\n"),
+    );
     if let Ok(text) = fs::read_to_string("/proc/cpuinfo") {
         let mut n = 0;
         let mut lines = Vec::new();
@@ -313,27 +325,32 @@ fn write_system_files(dir: &Path) {
                 }
                 n += 1;
             }
-            if line.starts_with("processor")
+            if (line.starts_with("processor")
                 || line.starts_with("vendor_id")
                 || line.starts_with("cpu family")
                 || line.starts_with("model")
                 || line.starts_with("model name")
                 || line.starts_with("stepping")
-                || line.starts_with("microcode")
+                || line.starts_with("microcode"))
+                && line.contains(':')
             {
-                if line.contains(':') {
-                    lines.push(line.to_string());
-                }
+                lines.push(line.to_string());
             }
         }
-        let _ = fs::write(dir.join("cpuinfo-head.txt"), format!("{}\n", lines.join("\n")));
+        let _ = write_nofollow(
+            dir.join("cpuinfo-head.txt"),
+            format!("{}\n", lines.join("\n")),
+        );
     }
     let (sys, _) = collect_system_dump(None, true);
-    let _ = fs::write(dir.join("dmidecode-system.txt"), sys);
+    let _ = write_nofollow(dir.join("dmidecode-system.txt"), sys);
     let inv = collect_system_info();
-    let _ = fs::write(
+    let _ = write_nofollow(
         dir.join("system.json"),
-        format!("{}\n", serde_json::to_string_pretty(&inv).unwrap_or_else(|_| "{}".into())),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&inv).unwrap_or_else(|_| "{}".into())
+        ),
     );
 }
 
@@ -391,33 +408,51 @@ fn capture_event(event_in: &str, sleep_type: &str, cfg: &Config) -> std::io::Res
         boot_id(),
         crate::analyze::live_kernel(),
     );
-    let _ = fs::write(dir.join("meta.txt"), &meta);
+    let _ = write_nofollow(dir.join("meta.txt"), &meta);
     if let Ok(text) = fs::read_to_string("/proc/meminfo") {
         let head: Vec<_> = text
             .lines()
-            .filter(|l| l.starts_with("MemTotal:") || l.starts_with("MemFree:") || l.starts_with("MemAvailable:"))
+            .filter(|l| {
+                l.starts_with("MemTotal:")
+                    || l.starts_with("MemFree:")
+                    || l.starts_with("MemAvailable:")
+            })
             .collect();
-        let _ = fs::write(dir.join("meminfo-head.txt"), format!("{}\n", head.join("\n")));
+        let _ = write_nofollow(
+            dir.join("meminfo-head.txt"),
+            format!("{}\n", head.join("\n")),
+        );
     }
     if let Ok(out) = Command::new("free").arg("-h").output() {
-        let _ = fs::write(dir.join("free.txt"), out.stdout);
+        let _ = write_nofollow(dir.join("free.txt"), out.stdout);
     }
-    let _ = fs::copy("/sys/power/mem_sleep", dir.join("mem_sleep.txt"));
+    let _ = copy_nofollow("/sys/power/mem_sleep", dir.join("mem_sleep.txt"));
     write_system_files(&dir);
     let (raw, _) = collect_memory_dump(None, true);
-    let _ = fs::write(dir.join("dmidecode-memory.txt"), if raw.ends_with('\n') { raw.clone() } else { format!("{raw}\n") });
+    let _ = write_nofollow(
+        dir.join("dmidecode-memory.txt"),
+        if raw.ends_with('\n') {
+            raw.clone()
+        } else {
+            format!("{raw}\n")
+        },
+    );
     let summary = format_dimm_summary(&parse_memory_devices(raw.as_bytes()));
-    let _ = fs::write(dir.join("dimm-summary.txt"), &summary);
+    let _ = write_nofollow(dir.join("dimm-summary.txt"), &summary);
     let probe = probe_hubs();
-    let _ = fs::write(
+    let _ = write_nofollow(
         dir.join("hub.json"),
-        format!("{}\n", serde_json::to_string_pretty(&probe).unwrap_or_else(|_| "{\"hubs\":[],\"stuck\":[],\"dmesg\":[]}".into())),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&probe)
+                .unwrap_or_else(|_| "{\"hubs\":[],\"stuck\":[],\"dmesg\":[]}".into())
+        ),
     );
     let mut recover_payload = json!({});
     if event == "recover" {
         let pending = state_dir.join("pending-recover.json");
         if pending.is_file() {
-            let _ = fs::copy(&pending, dir.join("recover.json"));
+            let _ = copy_nofollow(&pending, dir.join("recover.json"));
             let _ = fs::remove_file(&pending);
         }
         recover_payload = crate::schema::load_json_object(&dir.join("recover.json"));
@@ -435,7 +470,10 @@ fn capture_event(event_in: &str, sleep_type: &str, cfg: &Config) -> std::io::Res
             .rev()
             .map(|s| s.to_string())
             .collect();
-        let _ = fs::write(dir.join("dmesg-spd5118.txt"), format!("{}\n", lines.join("\n")));
+        let _ = write_nofollow(
+            dir.join("dmesg-spd5118.txt"),
+            format!("{}\n", lines.join("\n")),
+        );
     }
     let mut hub_stuck = "no";
     if probe
@@ -454,25 +492,25 @@ fn capture_event(event_in: &str, sleep_type: &str, cfg: &Config) -> std::io::Res
     let mut flags = dimm_summary_flags(&summary).join(",");
     if flags.is_empty() && hub_stuck == "yes" {
         flags = "hub_mr11_stuck".into();
-    } else if !flags.is_empty() && hub_stuck == "yes" && !format!(",{flags},").contains(",hub_mr11_stuck,") {
+    } else if !flags.is_empty()
+        && hub_stuck == "yes"
+        && !format!(",{flags},").contains(",hub_mr11_stuck,")
+    {
         flags = format!("{flags},hub_mr11_stuck");
     }
     let mut alert = false;
     if !flags.is_empty() {
         alert = true;
-        let _ = fs::write(dir.join("ALERT.flags"), format!("{flags}\n"));
-        let _ = File::create(state_dir.join("CORRUPTION_SEEN"));
-        let _ = fs::write(state_dir.join("SPD_NOW"), "corrupt\n");
+        let _ = write_nofollow(dir.join("ALERT.flags"), format!("{flags}\n"));
+        let _ = create_nofollow(state_dir.join("CORRUPTION_SEEN"));
+        let _ = write_nofollow(state_dir.join("SPD_NOW"), "corrupt\n");
         if hush_fix_notice {
             let msg = format!(
                 "Hub MR11 cleared this boot. Warm reboot so firmware re-reads SPD (identity stays stale until reboot; flags={flags})."
             );
-            let _ = fs::write(state_dir.join("NOTICE"), &msg);
+            let _ = write_nofollow(state_dir.join("NOTICE"), &msg);
         } else {
-            let mut alerts = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(state_dir.join("ALERTS.log"))?;
+            let mut alerts = open_append_nofollow(state_dir.join("ALERTS.log"))?;
             writeln!(
                 alerts,
                 "{} ALERT event={event} flags={flags} memtotal_kb={mem_kb} boot_kind={boot_kind} dir={}",
@@ -484,21 +522,32 @@ fn capture_event(event_in: &str, sleep_type: &str, cfg: &Config) -> std::io::Res
             let msg = format!(
                 "SPD corruption is current (flags={flags}; firmware published {mem_kb} kB). Click for status, or Analyze / Report."
             );
-            let _ = fs::write(state_dir.join("NOTICE"), &msg);
+            let _ = write_nofollow(state_dir.join("NOTICE"), &msg);
             notify_all(&msg);
         }
     } else {
-        let _ = fs::write(state_dir.join("SPD_NOW"), "healthy\n");
+        let _ = write_nofollow(state_dir.join("SPD_NOW"), "healthy\n");
         let _ = fs::remove_file(state_dir.join("NOTICE"));
         write_healthy_baseline(&state_dir, &dir, mem_kb);
     }
-    meta.push_str(&format!("alert={}\nflags={flags}\nhub_stuck={hub_stuck}\n", if alert { "true" } else { "false" }));
-    let _ = fs::write(dir.join("meta.txt"), &meta);
-    if matches!(event.as_str(), "boot" | "manual" | "reboot" | "poweroff" | "shutdown" | "recover") {
+    meta.push_str(&format!(
+        "alert={}\nflags={flags}\nhub_stuck={hub_stuck}\n",
+        if alert { "true" } else { "false" }
+    ));
+    let _ = write_nofollow(dir.join("meta.txt"), &meta);
+    if matches!(
+        event.as_str(),
+        "boot" | "manual" | "reboot" | "poweroff" | "shutdown" | "recover"
+    ) {
         write_dmesg_filtered(&dir);
     }
     if alert || event == "boot" || event == "manual" || event == "recover" {
-        if dir.join("e820.txt").metadata().map(|m| m.len() == 0).unwrap_or(true) {
+        if dir
+            .join("e820.txt")
+            .metadata()
+            .map(|m| m.len() == 0)
+            .unwrap_or(true)
+        {
             write_e820(&dir);
         }
         write_e820_ram(&dir);
@@ -520,7 +569,11 @@ fn capture_event(event_in: &str, sleep_type: &str, cfg: &Config) -> std::io::Res
         "hub_stuck": hub_stuck,
     });
     append_timeline(&state_dir, &rec)?;
-    prune_old_events(&events_dir, &state_dir.join("timeline.jsonl"), cfg.keep_days());
+    prune_old_events(
+        &events_dir,
+        &state_dir.join("timeline.jsonl"),
+        cfg.keep_days(),
+    );
     if event != "recover" {
         println!("{}", dir.display());
     }
@@ -545,9 +598,15 @@ fn write_dmesg_filtered(dir: &Path) {
             .into_iter()
             .rev()
             .collect();
-        let _ = fs::write(dir.join("dmesg-filtered.txt"), format!("{}\n", filtered.join("\n")));
-        let e820: Vec<_> = text.lines().filter(|ln| ln.contains("BIOS-e820:")).collect();
-        let _ = fs::write(dir.join("e820.txt"), format!("{}\n", e820.join("\n")));
+        let _ = write_nofollow(
+            dir.join("dmesg-filtered.txt"),
+            format!("{}\n", filtered.join("\n")),
+        );
+        let e820: Vec<_> = text
+            .lines()
+            .filter(|ln| ln.contains("BIOS-e820:"))
+            .collect();
+        let _ = write_nofollow(dir.join("e820.txt"), format!("{}\n", e820.join("\n")));
     }
 }
 
@@ -558,15 +617,21 @@ fn write_e820(dir: &Path) {
             .filter(|ln| ln.contains("BIOS-e820:"))
             .map(|s| s.to_string())
             .collect();
-        let _ = fs::write(dir.join("e820.txt"), format!("{}\n", e820.join("\n")));
+        let _ = write_nofollow(dir.join("e820.txt"), format!("{}\n", e820.join("\n")));
     }
 }
 
 fn write_e820_ram(dir: &Path) {
     let e820 = fs::read_to_string(dir.join("e820.txt")).unwrap_or_default();
-    let ram: Vec<_> = e820.lines().filter(|ln| ln.contains("System RAM")).collect();
+    let ram: Vec<_> = e820
+        .lines()
+        .filter(|ln| ln.contains("System RAM"))
+        .collect();
     if !ram.is_empty() {
-        let _ = fs::write(dir.join("e820-system-ram.txt"), format!("{}\n", ram.join("\n")));
+        let _ = write_nofollow(
+            dir.join("e820-system-ram.txt"),
+            format!("{}\n", ram.join("\n")),
+        );
         return;
     }
     if let Ok(out) = Command::new("dmesg").output() {
@@ -575,7 +640,10 @@ fn write_e820_ram(dir: &Path) {
             .filter(|ln| ln.contains("BIOS-e820:") && ln.contains("System RAM"))
             .map(|s| s.to_string())
             .collect();
-        let _ = fs::write(dir.join("e820-system-ram.txt"), format!("{}\n", ram.join("\n")));
+        let _ = write_nofollow(
+            dir.join("e820-system-ram.txt"),
+            format!("{}\n", ram.join("\n")),
+        );
     }
 }
 
@@ -588,6 +656,11 @@ fn symlink_force(target: &Path, link: &Path) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn unknown_capture_event_is_nonzero() {
+        assert_ne!(capture_main(&["not-an-event".into()]), 0);
+    }
 
     #[test]
     fn verified_fix_does_not_broadcast_corruption() {
@@ -613,4 +686,3 @@ mod tests {
         assert_eq!(infer_sleep_type("suspend"), "suspend");
     }
 }
-

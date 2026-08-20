@@ -12,9 +12,8 @@ use am5_spd_diag::config::{load_config, Config};
 use am5_spd_diag::format_probe_human;
 use am5_spd_diag::notify::{
     ensure_session_env, normalize_action, ANALYZE_ACTION, APP_ICON, APP_ID, APP_NAME,
-    CLOSE_GRACE_MS,
-    DEFAULT_ACTION, FDO_DEST, FDO_IFACE, FDO_PATH, GTK_NOTIFY_DEST, NOTIFY_ACTIONS, NOTIFY_ID,
-    NOTIFY_IMAGE, OBJECT_PATH, REPORT_ACTION,
+    CLOSE_GRACE_MS, DEFAULT_ACTION, FDO_DEST, FDO_IFACE, FDO_PATH, GTK_NOTIFY_DEST, NOTIFY_ACTIONS,
+    NOTIFY_ID, NOTIFY_IMAGE, OBJECT_PATH, REPORT_ACTION,
 };
 use am5_spd_diag::paths::{run_pkexec_helper, share_dir, HelperKind};
 use am5_spd_diag::FORUM_URL;
@@ -642,7 +641,7 @@ fn show_window(action: &str, token: Option<String>, package: Option<PackageSessi
         if let Some(tok) = token_clone.clone() {
             window.set_startup_id(&tok);
             window.connect_realize(move |w| {
-                if let Some(display) = w.display().downcast::<gdk4_wayland::WaylandDisplay>().ok() {
+                if let Ok(display) = w.display().downcast::<gdk4_wayland::WaylandDisplay>() {
                     display.set_startup_notification_id(&tok);
                 }
                 if let Some(surface) = w.surface() {
@@ -821,4 +820,3 @@ fn show_window(action: &str, token: Option<String>, package: Option<PackageSessi
     app.run_with_args::<&str>(&[]);
     drop(package_keep);
 }
-

@@ -252,7 +252,7 @@ pub fn dimm_flags(dimm: &BTreeMap<String, String>) -> Vec<String> {
     let part = dimm.get("part").map(String::as_str).unwrap_or("");
     let serial = dimm
         .get("serial")
-        .map(|s| s.replace(':', "").replace(' ', ""))
+        .map(|s| s.replace([':', ' '], ""))
         .unwrap_or_default();
     let tw = dimm
         .get("total_width")
@@ -271,7 +271,7 @@ pub fn dimm_flags(dimm: &BTreeMap<String, String>) -> Vec<String> {
     let serial_cmp = serial.to_ascii_lowercase().replace('-', "");
     let ghosts: Vec<String> = GHOST_SERIALS
         .iter()
-        .map(|s| s.replace('-', "").replace(' ', "").to_ascii_lowercase())
+        .map(|s| s.replace(['-', ' '], "").to_ascii_lowercase())
         .collect();
     if ghosts.contains(&serial_cmp) && is_placeholder(part) {
         flags.push("ghost_page0".into());
@@ -323,7 +323,10 @@ mod tests {
     fn dmidecode_corrupt() {
         let text = fs::read_to_string(repo_root().join("tests/dmidecode-corrupt.txt")).unwrap();
         let dimms = parse_dmidecode_memory(&text);
-        let by_loc: BTreeMap<_, _> = dimms.iter().map(|d| (d["locator"].clone(), d.clone())).collect();
+        let by_loc: BTreeMap<_, _> = dimms
+            .iter()
+            .map(|d| (d["locator"].clone(), d.clone()))
+            .collect();
         assert_eq!(by_loc.len(), 2);
         assert!(dimm_flags(&by_loc["DIMMA2"]).is_empty());
         let flags = dimm_flags(&by_loc["DIMMB2"]);

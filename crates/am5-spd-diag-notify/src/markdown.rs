@@ -328,7 +328,10 @@ fn append_preformatted(parent: &GtkBox, text: &str) {
         if e820_tag(line).is_some() {
             append_code_lines(parent, line);
         } else {
-            let markup = format!("<span font_family=\"monospace\">{}</span>", colorize_esc(line));
+            let markup = format!(
+                "<span font_family=\"monospace\">{}</span>",
+                colorize_esc(line)
+            );
             append_markup_label(parent, &markup, "am5-md-pre", true);
         }
     }
@@ -425,7 +428,12 @@ fn render_markdown(parent: &GtkBox, text: &str) {
     for event in Parser::new_ext(text, opts) {
         match event {
             Event::Start(Tag::Heading { level, .. }) => {
-                start_block(parent, &mut markup, &mut kind, BlockKind::Heading(heading_class(level)));
+                start_block(
+                    parent,
+                    &mut markup,
+                    &mut kind,
+                    BlockKind::Heading(heading_class(level)),
+                );
             }
             Event::End(TagEnd::Heading(_)) => flush_markup(parent, &mut markup, &mut kind),
             Event::Start(Tag::Paragraph) => {
@@ -642,7 +650,8 @@ mod tests {
 
     #[test]
     fn split_folded_e820_paragraph() {
-        let blob = "Healthy ts: BIOS-e820: [mem 0x0-0x1] System RAM BIOS-e820: [mem 0x2-0x3] reserved";
+        let blob =
+            "Healthy ts: BIOS-e820: [mem 0x0-0x1] System RAM BIOS-e820: [mem 0x2-0x3] reserved";
         let (intro, lines) = split_e820_text(blob).expect("e820 lines");
         assert!(intro.contains("Healthy"));
         assert_eq!(lines.len(), 2);

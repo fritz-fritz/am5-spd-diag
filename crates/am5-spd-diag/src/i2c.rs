@@ -42,7 +42,13 @@ struct I2cSmbusIoctl {
     data: *mut I2cSmbusData,
 }
 
-fn smbus_xfer(fd: libc::c_int, rw: u8, command: u8, size: u32, data: &mut I2cSmbusData) -> io::Result<()> {
+fn smbus_xfer(
+    fd: libc::c_int,
+    rw: u8,
+    command: u8,
+    size: u32,
+    data: &mut I2cSmbusData,
+) -> io::Result<()> {
     let mut args = I2cSmbusIoctl {
         read_write: rw,
         command,
@@ -87,7 +93,9 @@ pub fn smbus_read_byte_detailed(dev: &str, addr: u8, command: u8) -> io::Result<
 }
 
 pub fn smbus_read_byte(dev: &str, addr: u8, command: u8) -> Option<u8> {
-    smbus_read_byte_detailed(dev, addr, command).ok().map(|r| r.value)
+    smbus_read_byte_detailed(dev, addr, command)
+        .ok()
+        .map(|r| r.value)
 }
 
 pub fn smbus_write_word(dev: &str, addr: u8, command: u8, word: u16) -> bool {
@@ -124,7 +132,8 @@ fn i2c_tools_get_once(bus: i32, addr: u8, command: u8, force: bool) -> Option<u8
 }
 
 pub fn i2c_tools_get(bus: i32, addr: u8, command: u8) -> Option<u8> {
-    i2c_tools_get_once(bus, addr, command, false).or_else(|| i2c_tools_get_once(bus, addr, command, true))
+    i2c_tools_get_once(bus, addr, command, false)
+        .or_else(|| i2c_tools_get_once(bus, addr, command, true))
 }
 
 fn i2c_tools_set_word_once(bus: i32, addr: u8, command: u8, word: u16, force: bool) -> bool {
@@ -232,7 +241,9 @@ pub fn i2c_devices() -> Vec<(i32, String)> {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
-        let Some(num) = name.strip_prefix("i2c-") else { continue };
+        let Some(num) = name.strip_prefix("i2c-") else {
+            continue;
+        };
         if let Ok(bus) = num.parse::<i32>() {
             found.push((bus, path.display().to_string()));
         }
@@ -376,7 +387,9 @@ fn spd_hub_targets(dmesg_stuck: &[String]) -> Vec<HubTarget> {
         for ent in entries.flatten() {
             let id = ent.file_name();
             let Some(id) = id.to_str() else { continue };
-            let Some((bus, addr)) = parse_i2c_client_id(id) else { continue };
+            let Some((bus, addr)) = parse_i2c_client_id(id) else {
+                continue;
+            };
             if !HUB_ADDRS.contains(&addr) || !is_smbus_adapter("", Some(bus)) {
                 continue;
             }
@@ -397,7 +410,9 @@ fn spd_hub_targets(dmesg_stuck: &[String]) -> Vec<HubTarget> {
         }
     }
     for id in dmesg_stuck {
-        let Some((bus, addr)) = parse_i2c_client_id(id) else { continue };
+        let Some((bus, addr)) = parse_i2c_client_id(id) else {
+            continue;
+        };
         if !HUB_ADDRS.contains(&addr) || !is_smbus_adapter("", Some(bus)) {
             continue;
         }
@@ -584,7 +599,10 @@ pub fn recover_stuck(probe: Option<Value>) -> Value {
 
 pub fn uid_from_bus_path(bus_path: &str) -> Option<u32> {
     let path = PathBuf::from(bus_path);
-    let parts: Vec<_> = path.iter().map(|s| s.to_string_lossy().into_owned()).collect();
+    let parts: Vec<_> = path
+        .iter()
+        .map(|s| s.to_string_lossy().into_owned())
+        .collect();
     let idx = parts.iter().position(|p| p == "user")?;
     parts.get(idx + 1)?.parse().ok()
 }

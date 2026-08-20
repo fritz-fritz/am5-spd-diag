@@ -1,4 +1,5 @@
 use std::env;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 pub fn exe_path() -> PathBuf {
@@ -9,7 +10,10 @@ pub fn exe_path() -> PathBuf {
 }
 
 pub fn detect_share_libexec() -> (PathBuf, PathBuf) {
-    if let (Ok(share), Ok(libexec)) = (env::var("AM5_SPD_DIAG_SHARE"), env::var("AM5_SPD_DIAG_LIBEXEC")) {
+    if let (Ok(share), Ok(libexec)) = (
+        env::var("AM5_SPD_DIAG_SHARE"),
+        env::var("AM5_SPD_DIAG_LIBEXEC"),
+    ) {
         return (PathBuf::from(share), PathBuf::from(libexec));
     }
     let exe = exe_path();
@@ -50,7 +54,9 @@ pub fn detect_share_libexec() -> (PathBuf, PathBuf) {
 
 fn find_repo_root(start: &Path) -> Option<PathBuf> {
     for anc in start.ancestors() {
-        if anc.join("templates/ticket.md.tmpl").is_file() && anc.join("config/default.conf").is_file() {
+        if anc.join("templates/ticket.md.tmpl").is_file()
+            && anc.join("config/default.conf").is_file()
+        {
             return Some(anc.to_path_buf());
         }
     }
@@ -96,7 +102,10 @@ pub fn helper_kind() -> Option<HelperKind> {
 }
 
 fn is_installed_pkexec(exe_s: &str) -> bool {
-    let name = Path::new(exe_s).file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let name = Path::new(exe_s)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
     matches!(name, "pkexec-snapshot" | "pkexec-probe" | "pkexec-recover")
         && (exe_s.starts_with("/usr/libexec/") || exe_s.starts_with("/usr/local/libexec/"))
 }
@@ -121,10 +130,7 @@ pub fn pkexec_helper_path(kind: HelperKind) -> PathBuf {
 pub fn run_pkexec_helper(kind: HelperKind) -> Result<std::process::Output, String> {
     let helper = pkexec_helper_path(kind);
     if !helper.is_file() {
-        return Err(format!(
-            "polkit helper missing ({})",
-            helper.display()
-        ));
+        return Err(format!("polkit helper missing ({})", helper.display()));
     }
     std::process::Command::new("pkexec")
         .arg(&helper)
@@ -143,7 +149,10 @@ pub fn pin_helper_paths() {
     env::remove_var("LD_PRELOAD");
     env::remove_var("LD_LIBRARY_PATH");
     let exe = exe_path();
-    let here = exe.parent().map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from("."));
+    let here = exe
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
     let here_s = here.to_string_lossy();
     match here_s.as_ref() {
         "/usr/libexec/am5-spd-diag" => {
@@ -161,6 +170,126 @@ pub fn pin_helper_paths() {
             env::set_var("AM5_SPD_DIAG_LIBEXEC", &here);
         }
     }
+}
+
+/// Packaged capture tree. Privileged purge only removes this path, via tmpfiles.
+pub const SYSTEM_STATE_DIR: &str = "/var/log/am5-spd-diag";
+
+pub fn home_for_user(name: &str) -> Option<PathBuf> {
+    Some(passwd_uid_home(name)?.1)
+}
+
+fn uid_for_user(name: &str) -> Option<u32> {
+    Some(passwd_uid_home(name)?.0)
+}
+
+fn passwd_uid_home(name: &str) -> Option<(u32, PathBuf)> {
+    let c = std::ffi::CString::new(name).ok()?;
+    let pwd = unsafe { libc::getpwnam(c.as_ptr()) };
+    if pwd.is_null() {
+        return None;
+    }
+    let uid = unsafe { (*pwd).pw_uid };
+    let dir = unsafe { std::ffi::CStr::from_ptr((*pwd).pw_dir) };
+    Some((uid, PathBuf::from(dir.to_string_lossy().as_ref())))
+}
+
+fn euid() -> u32 {
+    unsafe { libc::geteuid() }
+}
+
+/// XDG user data directory for reports/packages (`$XDG_DATA_HOME/am5-spd-diag`).
+///
+/// When running as root, ignore `XDG_DATA_HOME` / `HOME` (they survive `sudo -E`)
+/// and use `SUDO_USER`'s passwd home instead.
+pub fn user_data_dir() -> PathBuf {
+    if euid() == 0 {
+        if let Ok(sudo_user) = env::var("SUDO_USER") {
+            if sudo_user != "root" {
+                if let Some(home) = home_for_user(&sudo_user) {
+                    return home.join(".local/share/am5-spd-diag");
+                }
+            }
+        }
+        return PathBuf::from("/root/.local/share/am5-spd-diag");
+    }
+    if let Ok(xdg) = env::var("XDG_DATA_HOME") {
+        let xdg = PathBuf::from(xdg);
+        if xdg.is_absolute() {
+            return xdg.join("am5-spd-diag");
+        }
+    }
+    let home = env::var("HOME").unwrap_or_else(|_| "/".into());
+    if home.is_empty() || home == "/" {
+        return PathBuf::from(".local/share/am5-spd-diag");
+    }
+    PathBuf::from(home).join(".local/share/am5-spd-diag")
+}
+
+/// True if `path` is the default per-user data dir under `home`.
+pub fn is_default_user_data_dir(path: &Path, home: &Path) -> bool {
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let home = home.canonicalize().unwrap_or_else(|_| home.to_path_buf());
+    resolved == home.join(".local/share/am5-spd-diag")
+}
+
+fn is_real_dir_owned_by(path: &Path, uid: u32) -> bool {
+    let Ok(meta) = path.symlink_metadata() else {
+        return false;
+    };
+    meta.file_type().is_dir() && meta.uid() == uid
+}
+
+/// User-owned XDG data dirs that unprivileged (or `SUDO_USER`) purge may delete.
+pub fn user_purge_targets() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if euid() == 0 {
+        if let Ok(sudo_user) = env::var("SUDO_USER") {
+            if sudo_user != "root" {
+                if let Some(home) = home_for_user(&sudo_user) {
+                    let dir = home.join(".local/share/am5-spd-diag");
+                    let uid = uid_for_user(&sudo_user).unwrap_or(u32::MAX);
+                    if is_real_dir_owned_by(&dir, uid) && is_default_user_data_dir(&dir, &home) {
+                        out.push(dir);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+    let dir = user_data_dir();
+    if dir.file_name().and_then(|n| n.to_str()) != Some("am5-spd-diag") {
+        return out;
+    }
+    let resolved = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+    if resolved == Path::new(SYSTEM_STATE_DIR) {
+        return out;
+    }
+    if is_real_dir_owned_by(&dir, euid()) {
+        out.push(resolved);
+    }
+    out
+}
+
+pub fn tmpfiles_purge_conf() -> PathBuf {
+    let installed = share_dir().join("tmpfiles-purge.conf");
+    if installed.is_file() {
+        return installed;
+    }
+    share_dir().join("systemd/am5-spd-diag-purge.conf")
+}
+
+pub fn tmpfiles_create_conf() -> PathBuf {
+    for path in [
+        "/usr/lib/tmpfiles.d/am5-spd-diag.conf",
+        "/usr/local/lib/tmpfiles.d/am5-spd-diag.conf",
+    ] {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return path;
+        }
+    }
+    share_dir().join("systemd/am5-spd-diag.tmpfiles.conf")
 }
 
 #[cfg(test)]
@@ -184,5 +313,32 @@ mod tests {
         assert_eq!(helper_kind_from_argv0("am5-spd-diag"), None);
         assert_eq!(helper_kind_from_argv0("/usr/bin/am5-spd-diag"), None);
         assert_eq!(helper_kind_from_argv0("snapshot"), None);
+    }
+
+    #[test]
+    fn default_user_data_dir_is_under_home_share() {
+        let home = Path::new("/home/user");
+        assert!(is_default_user_data_dir(
+            Path::new("/home/user/.local/share/am5-spd-diag"),
+            home
+        ));
+        assert!(!is_default_user_data_dir(
+            Path::new("/media/usb/.local/share/am5-spd-diag"),
+            home
+        ));
+        assert!(!is_default_user_data_dir(
+            Path::new("/home/user/.local/share/am5-spd-diag-evil"),
+            home
+        ));
+        assert!(!is_default_user_data_dir(Path::new("/etc/ssh"), home));
+        assert!(!is_default_user_data_dir(
+            Path::new("/var/log/am5-spd-diag"),
+            home
+        ));
+        assert!(!is_default_user_data_dir(
+            Path::new("/etc/am5-spd-diag"),
+            home
+        ));
+        assert!(!is_default_user_data_dir(Path::new("am5-spd-diag"), home));
     }
 }

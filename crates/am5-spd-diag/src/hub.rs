@@ -1,5 +1,6 @@
 use crate::i2c::{probe_hubs, uid_from_bus_path, STUCK_MR11};
 use crate::notify::{notify_bin_path, APP_ID};
+use crate::safe_fs::write_nofollow;
 use crate::schema::FORUM_URL;
 use serde_json::Value;
 use std::fs;
@@ -91,10 +92,13 @@ pub fn write_baseline(path: &Path, payload: &Value) {
         let _ = fs::create_dir_all(parent);
     }
     let text = serde_json::to_string_pretty(payload).unwrap_or_else(|_| "{}".into());
-    let _ = fs::write(path, format!("{text}\n"));
+    let _ = write_nofollow(path, format!("{text}\n"));
     let txt = path.with_extension("txt");
     let mut lines = vec![
-        format!("captured={}", payload.get("ts").and_then(|v| v.as_str()).unwrap_or("")),
+        format!(
+            "captured={}",
+            payload.get("ts").and_then(|v| v.as_str()).unwrap_or("")
+        ),
         format!(
             "memtotal_kb={}",
             payload
@@ -106,7 +110,10 @@ pub fn write_baseline(path: &Path, payload: &Value) {
                 })
                 .unwrap_or_default()
         ),
-        format!("cpu={}", payload.get("cpu").and_then(|v| v.as_str()).unwrap_or("")),
+        format!(
+            "cpu={}",
+            payload.get("cpu").and_then(|v| v.as_str()).unwrap_or("")
+        ),
         format!(
             "board={}",
             payload
@@ -128,18 +135,23 @@ pub fn write_baseline(path: &Path, payload: &Value) {
                 "{} {} {} {}",
                 dimm.get("locator").and_then(|v| v.as_str()).unwrap_or("?"),
                 dimm.get("size").and_then(|v| v.as_str()).unwrap_or("?"),
-                dimm.get("manufacturer").and_then(|v| v.as_str()).unwrap_or("?"),
+                dimm.get("manufacturer")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?"),
                 dimm.get("part").and_then(|v| v.as_str()).unwrap_or("?"),
             ));
         }
     }
-    let _ = fs::write(txt, format!("{}\n", lines.join("\n")));
+    let _ = write_nofollow(txt, format!("{}\n", lines.join("\n")));
 }
 
 pub fn print_probe(json_out: bool) {
     let probe = probe_hubs();
     if json_out {
-        println!("{}", serde_json::to_string_pretty(&probe).unwrap_or_else(|_| "{}".into()));
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&probe).unwrap_or_else(|_| "{}".into())
+        );
         return;
     }
     println!("{}", format_probe_human(&probe));
@@ -205,9 +217,9 @@ pub fn format_probe_human(probe: &Value) -> String {
         return lines.join("\n");
     }
 
-    let need_root = attempts.iter().any(|a| {
-        matches!(a["errno_name"].as_str(), Some("EACCES") | Some("EPERM"))
-    });
+    let need_root = attempts
+        .iter()
+        .any(|a| matches!(a["errno_name"].as_str(), Some("EACCES") | Some("EPERM")));
     if hubs.is_empty() && attempts.is_empty() {
         lines.push("No spd5118 hub devices in sysfs on host SMBus adapters.".into());
         for adapter in &smbus {
@@ -221,24 +233,29 @@ pub fn format_probe_human(probe: &Value) -> String {
     }
     if hubs.is_empty() {
         if need_root {
-            lines.push("spd5118 hubs found, but /dev/i2c-* could not be opened (need root).".into());
+            lines
+                .push("spd5118 hubs found, but /dev/i2c-* could not be opened (need root).".into());
         } else {
             lines.push("spd5118 hubs found, but MR11 could not be read.".into());
         }
     }
 
     if !attempts.is_empty() {
-        let probed: std::collections::BTreeSet<_> = attempts
+        let probed: std::collections::BTreeSet<_> =
+            attempts.iter().filter_map(|a| a["bus"].as_i64()).collect();
+        for adapter in smbus
             .iter()
-            .filter_map(|a| a["bus"].as_i64())
-            .collect();
-        for adapter in smbus.iter().filter(|a| probed.contains(&a["bus"].as_i64().unwrap_or(-1))) {
+            .filter(|a| probed.contains(&a["bus"].as_i64().unwrap_or(-1)))
+        {
             lines.push(format!(
                 "bus {} {}",
                 adapter["bus"],
                 adapter["name"].as_str().unwrap_or("?")
             ));
-            for attempt in attempts.iter().filter(|a| a["bus"].as_i64() == adapter["bus"].as_i64()) {
+            for attempt in attempts
+                .iter()
+                .filter(|a| a["bus"].as_i64() == adapter["bus"].as_i64())
+            {
                 lines.push(format_attempt_line(attempt));
             }
         }
@@ -312,7 +329,11 @@ fn format_hub_line(hub: &Value) -> String {
 
 pub fn recover_run() -> (i32, serde_json::Value) {
     let result = crate::capture::recover_and_record();
-    let rc = if result["ok"].as_bool() == Some(true) { 0 } else { 1 };
+    let rc = if result["ok"].as_bool() == Some(true) {
+        0
+    } else {
+        1
+    };
     (rc, result)
 }
 
@@ -337,12 +358,19 @@ pub fn print_recover_result(result: &serde_json::Value) -> i32 {
         "reason": result["reason"],
         "actions": result["actions"],
     });
-    println!("{}", serde_json::to_string_pretty(&slim).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&slim).unwrap_or_default()
+    );
     if result["ok"].as_bool() != Some(true) {
         if result["reason"].as_str() == Some("no_stuck_hub") {
             println!("No hub with MR11=0x08 was found. SMBIOS Unknown/missing part can still be present.");
         }
-        return if result["ok"].as_bool() == Some(true) { 0 } else { 1 };
+        return if result["ok"].as_bool() == Some(true) {
+            0
+        } else {
+            1
+        };
     }
     println!("MR11 cleared. Warm reboot now so firmware re-reads the real SPD.");
     0
@@ -374,7 +402,9 @@ mod tests {
     #[test]
     fn notify_user_argv_uses_session_bus() {
         let argv = notify_user_argv("/run/user/1000/bus", "title", "body");
-        assert!(argv.iter().any(|s| s == "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"));
+        assert!(argv
+            .iter()
+            .any(|s| s == "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"));
         assert!(argv.iter().any(|s| s == "XDG_RUNTIME_DIR=/run/user/1000"));
         assert!(argv.iter().any(|s| s == "--notify"));
         assert_eq!(&argv[argv.len() - 2..], ["title", "body"]);

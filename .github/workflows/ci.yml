@@ -24,9 +24,17 @@ jobs:
           sudo apt-get install -y libgtk-4-dev pkg-config python3
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Check packaging versions agree
         run: python3 scripts/bump_version.py --check
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
         run: make test

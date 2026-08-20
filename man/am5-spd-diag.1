@@ -1,4 +1,4 @@
-.TH AM5-SPD-DIAG 1 "2026-08-17" "am5-spd-diag 1.0.0" "User Commands"
+.TH AM5-SPD-DIAG 1 "2026-08-19" "am5-spd-diag 1.0.0" "User Commands"
 .SH NAME
 am5-spd-diag \- AM5 DDR5 SPD hub diagnostics after sleep / warm reboot
 .SH SYNOPSIS
@@ -62,7 +62,10 @@ does not need a password.
 Experimental in-band MR11 clear. Requires admin authentication. Records a recover timeline event. Does not reboot.
 .TP
 .B purge
-Delete captured logs. Does not uninstall the program.
+Delete captured logs.
+.I /var/log/am5-spd-diag
+is removed with systemd-tmpfiles first (needs root); user XDG data is
+removed only after that succeeds. Does not uninstall the program.
 .PP
 A capture that finds current corruption posts a persistent urgent desktop
 notification (no timeout). The notice uses the warning emblem as its image
@@ -84,7 +87,32 @@ dismissed. SSH/console sessions still get journal and
 .SH FILES
 .TP
 .I /var/log/am5-spd-diag
-Captures, reports, and packages.
+Captures, reports, and packages. systemd-tmpfiles creates this tree as
+.B 0755 root:root
+(files typically
+.BR 0644 ).
+Any local user can list and read it; only root can write.
+Board and DIMM serials are included. Use
+.B package
+for a tarball you own.
+.TP
+.I $XDG_DATA_HOME/am5-spd-diag
+User reports and packages when
+.I /var/log/am5-spd-diag
+is not writable. Default
+.IR ~/.local/share/am5-spd-diag .
+.TP
+.I /usr/lib/tmpfiles.d/am5-spd-diag.conf
+Creates and re-owns the system log tree at boot
+.RB ( systemd-tmpfiles --create ).
+Does not empty the logs on reboot.
+.TP
+.I /usr/share/am5-spd-diag/tmpfiles-purge.conf
+Used only by
+.B am5-spd-diag purge
+.RB ( systemd-tmpfiles --remove ).
+Not installed under
+.IR tmpfiles.d .
 .TP
 .I /etc/am5-spd-diag.conf
 Optional overrides.

@@ -10,7 +10,8 @@ use am5_spd_diag::hub::{
 };
 use am5_spd_diag::notify::{ensure_session_env, notify_bin_path};
 use am5_spd_diag::paths::{
-    helper_kind, pin_helper_paths, pkexec_helper_path, run_pkexec_helper, share_dir, HelperKind,
+    helper_kind, pin_helper_paths, pkexec_helper_path, run_pkexec_helper, share_dir,
+    tmpfiles_create_conf, tmpfiles_purge_conf, user_purge_targets, HelperKind, SYSTEM_STATE_DIR,
 };
 use am5_spd_diag::smbios::{collect_memory_dump, parse_memory_devices};
 use std::env;
@@ -45,7 +46,8 @@ Fix
 Logs
   purge [--yes]       Delete captured evidence. Does not remove the program.
 
-Logs default to /var/log/am5-spd-diag. Corruption notifies logged-in sessions.
+Captures in /var/log/am5-spd-diag are world-readable and root-owned.
+Corruption notifies logged-in sessions.
 ";
 
 fn help_cmd(cmd: &str) -> i32 {
@@ -84,7 +86,8 @@ Ticket markdown: am5-spd-diag report
             "\
 am5-spd-diag snapshot
 
-Take one capture now (event=manual). Writes under $STATE_DIR/events/.
+Take one capture now (event=manual). Writes under
+/var/log/am5-spd-diag/events/ (world-readable, root-owned).
 If not root, runs the snapshot helper via pkexec
 (/usr/libexec/am5-spd-diag/pkexec-snapshot). A local active session does
 not need a password. That helper cannot fix hubs or change sleep policy.
@@ -97,9 +100,10 @@ am5-spd-diag report [--no-snapshot] [--from FILE] [--out FILE]
 Capture a current snapshot (local session, no password), then fill the
 ticket template. Prints the markdown (same as status/analyze print their
 text), then the saved path on the last line. Writes under
-$STATE_DIR/reports/ (or ~/.local/share/am5-spd-diag/reports/ if that
-directory is not writable). --no-snapshot skips the capture (tests /
-already-fresh logs).
+/var/log/am5-spd-diag/reports/ (readable by any local user). If that
+directory is not writable, uses $XDG_DATA_HOME/am5-spd-diag/reports/
+(~/.local/share/am5-spd-diag/reports/ by default). --no-snapshot skips
+the capture (tests / already-fresh logs).
 
 --from FILE loads a package tarball (or extracted directory) instead of
 live logs. Skips snapshot. Prints markdown only unless --out FILE is given.
@@ -162,7 +166,12 @@ am5-spd-diag purge [--yes]
 
 Delete captured evidence (timeline, events, baseline, reports, packages).
 Does not uninstall the program, systemd units, or /etc/am5-spd-diag.conf.
-Needs root for /var/log/am5-spd-diag. Prompts for YES unless --yes.
+
+User reports under $XDG_DATA_HOME/am5-spd-diag (default
+~/.local/share/am5-spd-diag) are removed as you only after
+/var/log/am5-spd-diag is wiped with systemd-tmpfiles (needs root).
+A failed sudo leaves your XDG reports in place.
+Prompts for YES unless --yes.
 
 To remove the software itself: rpm/dnf/zypper/apt, or
 `sudo make PREFIX=/usr uninstall` from the source tree.
@@ -191,16 +200,15 @@ fn euid() -> u32 {
     unsafe { libc::geteuid() }
 }
 
-fn need_root(args: &[String]) {
+fn need_root(args: &[String]) -> i32 {
     if euid() == 0 {
-        return;
+        return 0;
     }
     let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("am5-spd-diag"));
     let mut cmd = Command::new("sudo");
-    cmd.arg("-E").arg(exe);
+    cmd.arg("--").arg(exe);
     cmd.args(args);
-    let status = cmd.status().unwrap_or_default();
-    process::exit(status.code().unwrap_or(1));
+    cmd.status().unwrap_or_default().code().unwrap_or(1)
 }
 
 fn pkexec_snapshot_path() -> PathBuf {
@@ -248,43 +256,13 @@ fn which(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn local_share_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Ok(sudo_user) = env::var("SUDO_USER") {
-        if sudo_user != "root" {
-            if let Some(home) = home_for(&sudo_user) {
-                let dir = home.join(".local/share/am5-spd-diag");
-                if dir.exists() {
-                    dirs.push(dir);
-                }
-            }
-        }
-    }
-    if let Ok(home) = env::var("HOME") {
-        if home != "/" {
-            let dir = PathBuf::from(home).join(".local/share/am5-spd-diag");
-            if dir.exists() && !dirs.contains(&dir) {
-                dirs.push(dir);
-            }
-        }
-    }
-    dirs
-}
-
-fn home_for(name: &str) -> Option<PathBuf> {
-    let c = std::ffi::CString::new(name).ok()?;
-    let pwd = unsafe { libc::getpwnam(c.as_ptr()) };
-    if pwd.is_null() {
-        return None;
-    }
-    Some(PathBuf::from(unsafe { std::ffi::CStr::from_ptr((*pwd).pw_dir) }.to_string_lossy().as_ref()))
-}
-
 fn cmd_purge(args: &[String]) -> i32 {
     let mut yes = false;
+    let mut system_only = false;
     for arg in args {
         match arg.as_str() {
             "--yes" | "-y" => yes = true,
+            "--system" => system_only = true,
             _ => {
                 eprintln!("am5-spd-diag: unknown option: {arg}");
                 let _ = help_cmd("purge");
@@ -292,55 +270,118 @@ fn cmd_purge(args: &[String]) -> i32 {
             }
         }
     }
-    let mut restart = vec!["purge".into()];
-    restart.extend(args.iter().cloned());
-    need_root(&restart);
-    let cfg = load_config(&share_dir());
-    let state = cfg.state_dir();
-    let state_s = state.to_string_lossy();
-    if matches!(state_s.as_ref(), "" | "/" | "/var" | "/var/log" | "/home" | "/usr" | "/etc") {
-        eprintln!("am5-spd-diag: refusing to purge unsafe STATE_DIR: {state_s}");
-        return 1;
-    }
-    let mut targets = vec![state.clone()];
-    for extra in local_share_dirs() {
-        if !targets.contains(&extra) {
-            targets.push(extra);
+    let user_targets = if system_only {
+        Vec::new()
+    } else {
+        user_purge_targets()
+    };
+    if euid() != 0 {
+        print_purge_plan(&user_targets, true);
+        if !confirm_purge(yes) {
+            return 1;
         }
+        let rc = need_root(&["purge".into(), "--yes".into(), "--system".into()]);
+        if rc != 0 {
+            return rc;
+        }
+        remove_user_purge_targets(&user_targets);
+        println!("Purged.");
+        return 0;
     }
-    println!("This deletes captured evidence (program and units stay installed):");
-    for path in &targets {
-        println!("  {}", path.display());
-    }
-    if !yes {
-        print!("Type YES to purge: ");
-        let _ = io::stdout().flush();
-        let mut ans = String::new();
-        let _ = io::stdin().read_line(&mut ans);
-        if ans.trim() != "YES" {
-            println!("Aborted.");
+    if !system_only {
+        print_purge_plan(&user_targets, false);
+        if !confirm_purge(yes) {
             return 1;
         }
     }
-    for path in &targets {
+    if let Err(err) = purge_system_state() {
+        eprintln!("am5-spd-diag: {err}");
+        return 1;
+    }
+    remove_user_purge_targets(&user_targets);
+    if !system_only {
+        println!("Purged.");
+    }
+    0
+}
+
+fn print_purge_plan(user_targets: &[PathBuf], needs_root: bool) {
+    println!("This deletes captured evidence (program and units stay installed):");
+    let root_note = if needs_root {
+        "  (systemd-tmpfiles, needs root; wiped first)"
+    } else {
+        "  (systemd-tmpfiles; wiped first)"
+    };
+    println!("  {SYSTEM_STATE_DIR}{root_note}");
+    for path in user_targets {
+        println!("  {}  (after system logs)", path.display());
+    }
+}
+
+fn confirm_purge(yes: bool) -> bool {
+    if yes {
+        return true;
+    }
+    print!("Type YES to purge: ");
+    let _ = io::stdout().flush();
+    let mut ans = String::new();
+    let _ = io::stdin().read_line(&mut ans);
+    if ans.trim() != "YES" {
+        println!("Aborted.");
+        return false;
+    }
+    true
+}
+
+fn remove_user_purge_targets(targets: &[PathBuf]) {
+    for path in targets {
         let _ = std::fs::remove_dir_all(path);
     }
-    let _ = Command::new("systemd-tmpfiles")
-        .args(["--create", "/usr/lib/tmpfiles.d/am5-spd-diag.conf"])
-        .status();
-    let _ = std::fs::create_dir_all(&state);
-    println!("Purged.");
-    0
+}
+
+fn purge_system_state() -> Result<(), String> {
+    let remove_conf = tmpfiles_purge_conf();
+    if remove_conf.is_file() {
+        let status = Command::new("systemd-tmpfiles")
+            .arg("--remove")
+            .arg(&remove_conf)
+            .status()
+            .map_err(|e| format!("systemd-tmpfiles --remove: {e}"))?;
+        if !status.success() {
+            return Err(format!(
+                "systemd-tmpfiles --remove {} failed",
+                remove_conf.display()
+            ));
+        }
+    } else {
+        let path = Path::new(SYSTEM_STATE_DIR);
+        let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        if resolved != path {
+            return Err(format!(
+                "refusing to purge {}: not {}",
+                resolved.display(),
+                SYSTEM_STATE_DIR
+            ));
+        }
+        let _ = std::fs::remove_dir_all(path);
+    }
+    let create_conf = tmpfiles_create_conf();
+    if create_conf.is_file() {
+        let _ = Command::new("systemd-tmpfiles")
+            .arg("--create")
+            .arg(&create_conf)
+            .status();
+    } else {
+        let _ = std::fs::create_dir_all(SYSTEM_STATE_DIR);
+    }
+    Ok(())
 }
 
 fn cmd_open(args: &[String]) -> i32 {
     ensure_session_env();
     let bin = notify_bin_path();
     if !bin.is_file() {
-        eprintln!(
-            "am5-spd-diag: GTK helper not found ({})",
-            bin.display()
-        );
+        eprintln!("am5-spd-diag: GTK helper not found ({})", bin.display());
         eprintln!("Install the package, or: sudo make PREFIX=/usr install");
         return 1;
     }
@@ -371,7 +412,9 @@ fn cmd_open(args: &[String]) -> i32 {
             "--no-snapshot" => {}
             "-h" | "--help" => return help_cmd("open"),
             other => {
-                eprintln!("am5-spd-diag: open shows status, analyze, report, or probe (not {other})");
+                eprintln!(
+                    "am5-spd-diag: open shows status, analyze, report, or probe (not {other})"
+                );
                 let _ = help_cmd("open");
                 return 1;
             }
@@ -421,7 +464,9 @@ fn from_archive(args: &[String]) -> Result<Option<PathBuf>, String> {
     Ok(found)
 }
 
-fn load_from_package(path: &Path) -> Result<(PackageSession, Vec<am5_spd_diag::TimelineEvent>), String> {
+fn load_from_package(
+    path: &Path,
+) -> Result<(PackageSession, Vec<am5_spd_diag::TimelineEvent>), String> {
     let pkg = open_package(path)?;
     let events = load_timeline_from_package(&pkg.root);
     Ok((pkg, events))
@@ -719,11 +764,17 @@ fn main() {
     if cmd == "help" {
         process::exit(help_cmd(args.get(1).map(String::as_str).unwrap_or("")));
     }
-    if cmd != "capture" && (args.get(1).map(String::as_str) == Some("-h") || args.get(1).map(String::as_str) == Some("--help"))
+    if cmd != "capture"
+        && (args.get(1).map(String::as_str) == Some("-h")
+            || args.get(1).map(String::as_str) == Some("--help"))
     {
         process::exit(help_cmd(&cmd));
     }
-    let rest = if args.is_empty() { Vec::new() } else { args[1..].to_vec() };
+    let rest = if args.is_empty() {
+        Vec::new()
+    } else {
+        args[1..].to_vec()
+    };
     let rc = match cmd.as_str() {
         "-h" | "--help" | "" => {
             print!("{USAGE}");
@@ -758,7 +809,14 @@ fn main() {
                 i += 1;
             }
             let (text, source) = collect_memory_dump(table.as_deref(), !sysfs_only);
-            print!("{}", if text.ends_with('\n') { text } else { format!("{text}\n") });
+            print!(
+                "{}",
+                if text.ends_with('\n') {
+                    text
+                } else {
+                    format!("{text}\n")
+                }
+            );
             if source == "none" {
                 1
             } else {

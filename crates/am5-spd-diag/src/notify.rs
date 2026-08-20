@@ -19,7 +19,9 @@ pub const DEFAULT_ACTION: &str = "app.status";
 pub const ANALYZE_ACTION: &str = "app.analyze";
 pub const REPORT_ACTION: &str = "app.report";
 pub const ACTIONS: &[&str] = &["status", "analyze", "report", "probe"];
-pub const NOTIFY_ACTIONS: &[&str] = &["default", "Status", "analyze", "Analyze", "report", "Report"];
+pub const NOTIFY_ACTIONS: &[&str] = &[
+    "default", "Status", "analyze", "Analyze", "report", "Report",
+];
 pub const FDO_DEST: &str = "org.freedesktop.Notifications";
 pub const FDO_PATH: &str = "/org/freedesktop/Notifications";
 pub const FDO_IFACE: &str = "org.freedesktop.Notifications";
@@ -84,8 +86,14 @@ pub fn parse_systemd_env_file(text: &str) -> BTreeMap<String, String> {
         if line.is_empty() || line.starts_with('#') || !line.contains('=') {
             continue;
         }
-        let Some((key, rest)) = line.split_once('=') else { continue };
-        if key.is_empty() || !key.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_') {
+        let Some((key, rest)) = line.split_once('=') else {
+            continue;
+        };
+        if key.is_empty()
+            || !key
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
             continue;
         }
         let parsed = shlex_first(rest);
@@ -99,7 +107,9 @@ fn shlex_first(rest: &str) -> String {
     if rest.is_empty() {
         return String::new();
     }
-    if (rest.starts_with('\'') && rest.ends_with('\'')) || (rest.starts_with('"') && rest.ends_with('"')) {
+    if (rest.starts_with('\'') && rest.ends_with('\''))
+        || (rest.starts_with('"') && rest.ends_with('"'))
+    {
         return rest[1..rest.len() - 1].to_string();
     }
     rest.split_whitespace().next().unwrap_or(rest).to_string()
@@ -158,21 +168,38 @@ pub fn ensure_session_env() {
     }
 }
 
-pub fn systemd_user_run_argv(argv: &[String], env: &BTreeMap<String, String>, runner: Option<&str>) -> Option<Vec<String>> {
+pub fn systemd_user_run_argv(
+    argv: &[String],
+    env: &BTreeMap<String, String>,
+    runner: Option<&str>,
+) -> Option<Vec<String>> {
     let runner = runner.map(str::to_string).or_else(|| which("systemd-run"));
     let runner = runner?;
-    if env.get("XDG_RUNTIME_DIR").map(|s| s.is_empty()).unwrap_or(true)
-        && std::env::var("XDG_RUNTIME_DIR").unwrap_or_default().is_empty()
+    if env
+        .get("XDG_RUNTIME_DIR")
+        .map(|s| s.is_empty())
+        .unwrap_or(true)
+        && std::env::var("XDG_RUNTIME_DIR")
+            .unwrap_or_default()
+            .is_empty()
     {
         // Match Python: require XDG_RUNTIME_DIR on the env map passed in.
-        if env.get("XDG_RUNTIME_DIR").is_none() {
-            return None;
-        }
+        env.get("XDG_RUNTIME_DIR")?;
     }
-    if env.get("XDG_RUNTIME_DIR").map(String::as_str).unwrap_or("").is_empty() {
+    if env
+        .get("XDG_RUNTIME_DIR")
+        .map(String::as_str)
+        .unwrap_or("")
+        .is_empty()
+    {
         return None;
     }
-    let mut cmd = vec![runner, "--user".into(), "--collect".into(), "--quiet".into()];
+    let mut cmd = vec![
+        runner,
+        "--user".into(),
+        "--collect".into(),
+        "--quiet".into(),
+    ];
     for key in [
         "XDG_ACTIVATION_TOKEN",
         "DESKTOP_STARTUP_ID",
@@ -245,9 +272,14 @@ mod tests {
 
     #[test]
     fn parse_env_file() {
-        let parsed = parse_systemd_env_file("DISPLAY=:0\nWAYLAND_DISPLAY='wayland-0'\nPATH=/usr/bin\n# skip\n");
+        let parsed = parse_systemd_env_file(
+            "DISPLAY=:0\nWAYLAND_DISPLAY='wayland-0'\nPATH=/usr/bin\n# skip\n",
+        );
         assert_eq!(parsed.get("DISPLAY").map(String::as_str), Some(":0"));
-        assert_eq!(parsed.get("WAYLAND_DISPLAY").map(String::as_str), Some("wayland-0"));
+        assert_eq!(
+            parsed.get("WAYLAND_DISPLAY").map(String::as_str),
+            Some("wayland-0")
+        );
         assert_eq!(parsed.get("PATH").map(String::as_str), Some("/usr/bin"));
     }
 
@@ -266,8 +298,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(&argv[..3], ["/usr/bin/systemd-run", "--user", "--collect"]);
-        assert!(argv.iter().any(|s| s == "--setenv=XDG_ACTIVATION_TOKEN=tok"));
-        assert!(argv.iter().any(|s| s == "--setenv=WAYLAND_DISPLAY=wayland-0"));
+        assert!(argv
+            .iter()
+            .any(|s| s == "--setenv=XDG_ACTIVATION_TOKEN=tok"));
+        assert!(argv
+            .iter()
+            .any(|s| s == "--setenv=WAYLAND_DISPLAY=wayland-0"));
         assert_eq!(&argv[argv.len() - 3..], ["--", "/helper", "analyze"]);
     }
 

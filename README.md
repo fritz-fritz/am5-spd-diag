@@ -6,7 +6,7 @@
 After sleep on AMD AM5, BIOS can misread a real memory stick as an unknown 2 GB module.  
 A restart does not fix it. Pulling the power does.
 
-[What is this?](#what-is-this) · [Symptoms](#what-youll-see) · [Who it affects](#who-it-affects) · [What to do](#what-to-do) · [The tool](#am5-spd-diag) · [How it works](#how-it-works) · [Security](#is-this-a-security-issue) · [Data](#is-my-data-at-risk) · [Vendors](#for-firmware-vendors) · [FAQ](#faq) · [Development](#development)
+[What is this?](#what-is-this) · [Symptoms](#what-youll-see) · [Who it affects](#who-it-affects) · [What to do](#what-to-do) · [The tool](#am5-spd-diag) · [Logs](#logs) · [How it works](#how-it-works) · [Security](#is-this-a-security-issue) · [Data](#is-my-data-at-risk) · [Vendors](#for-firmware-vendors) · [FAQ](#faq) · [Development](#development)
 
 ---
 
@@ -111,7 +111,7 @@ After install, captures run on their own:
 - just before sleep
 - just after resume
 
-They land in `/var/log/am5-spd-diag/` (readable by your user). Reports go under `reports/` in that same tree.
+They land in `/var/log/am5-spd-diag/`. See [Logs](#logs) for who can read or write that tree.
 
 ```bash
 sudo make PREFIX=/usr uninstall   # keeps logs
@@ -159,6 +159,18 @@ Same views, printed to the terminal. `am5-spd-diag help` and `am5-spd-diag help 
 
 
 `analyze`, `report`, and `open` take `--from FILE` to read a package instead of live logs. `report --from` prints markdown only unless you also pass `--out FILE`.
+
+### Logs
+
+systemd-tmpfiles owns `/var/log/am5-spd-diag/` (`0755 root:root` directories, `0644` files). **Any local user can list and read** captures, reports, and packages there (`ls`, `less`, a file manager). You do not need sudo to look. Board and DIMM serials are in those files, so on a shared machine prefer `package` and keep the tarball private.
+
+Only root writes that tree: boot/sleep units and the passwordless snapshot helper. Unprivileged users cannot create or replace files there. That is deliberate — a user-writable log directory plus a root helper is a symlink-swap.
+
+You do not have to browse the directory to use the tool. `status`, `analyze`, `report`, and **Package** already show the same evidence. `package` is the portable copy for a vendor ticket.
+
+If the system directory is not writable, reports and packages go to `$XDG_DATA_HOME/am5-spd-diag/` (`~/.local/share/am5-spd-diag/` by default). Those files are yours.
+
+`am5-spd-diag purge` asks for root to wipe `/var/log/am5-spd-diag` with systemd-tmpfiles first, then deletes your XDG data directory. If sudo fails, user reports stay. The wipe snippet is not in `tmpfiles.d`, so a normal boot does not empty the logs. Uninstall keeps them.
 
 ### Fix without pulling the plug
 
@@ -356,6 +368,9 @@ It only writes MR11 when it already reads `0x08`. It does not touch EEPROM. It i
 
 **Is there a BIOS version that fixes it?**  
 Not as of the forum author’s check through MSI BIOS 1.AA3 (June 2026), and not as a named AGESA fix we can point at. If a vendor ships a masked page-select, this README should say so.
+
+**Where are the logs? Do I need root to read them?**  
+No. `/var/log/am5-spd-diag/` is world-readable. `ls` and `less` work as your user. Writing there is root-only. `package` copies the same evidence into a tarball you own.
 
 ---
 

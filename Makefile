@@ -69,6 +69,10 @@ test-packaging:
 	  cmp -s debian.rules debian/rules && \
 	  cmp -s debian.compat debian/compat; \
 	fi
+	grep -q '^d /var/log/am5-spd-diag 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
+	grep -q '^Z /var/log/am5-spd-diag ~0755 root root -$$' systemd/$(NAME).tmpfiles.conf
+	grep -q '^R /var/log/am5-spd-diag$$' systemd/$(NAME)-purge.conf
+	! grep -q '^R ' systemd/$(NAME).tmpfiles.conf
 
 test-tool:
 	$(CARGO) test -p am5-spd-diag $(CARGOFLAGS)
@@ -157,15 +161,17 @@ test-cli:
 	$(BIN) help recover | grep -q 'am5-spd-diag fix'
 	$(BIN) --help | grep -q '  fix '
 	$(BIN) help purge | grep -q 'Delete captured evidence'
+	$(BIN) help purge | grep -q systemd-tmpfiles
+	$(BIN) --help | grep -q 'world-readable'
 	! $(BIN) --help | grep -qE '  (install|uninstall|capture) '
 	mkdir -p tests/fixture/reports
 	AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) package --no-snapshot --package-dir tests/fixture/reports > tests/fixture/reports/pkg.path
-	$(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'SPD now: corrupted'
-	$(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'Reproduction pattern'
-	$(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'boot=warm_reboot'
-	$(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q '2.A52'
-	$(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'Full firmware e820 table'
-	$(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" --out tests/fixture/reports/from-out.md | grep -q 'from-out.md'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) $(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'SPD now: corrupted'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) $(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'Reproduction pattern'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) $(BIN) analyze --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'boot=warm_reboot'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) $(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q '2.A52'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) $(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" | grep -q 'Full firmware e820 table'
+	AM5_SPD_DIAG_SHARE=$(CURDIR) $(BIN) report --from "$$(cat tests/fixture/reports/pkg.path)" --out tests/fixture/reports/from-out.md | grep -q 'from-out.md'
 	grep -q '2.A52' tests/fixture/reports/from-out.md
 	! AM5_SPD_DIAG_SHARE=$(CURDIR) AM5_SPD_DIAG_STATE_DIR=tests/fixture $(BIN) status --from "$$(cat tests/fixture/reports/pkg.path)" >/dev/null 2>&1
 
@@ -218,6 +224,7 @@ install:
 	$(INSTALL_PROGRAM) systemd/system-sleep/$(NAME) $(DESTDIR)$(SLEEPDIR)/$(NAME)
 	$(INSTALL_DATA) man/am5-spd-diag.1 $(DESTDIR)$(MANDIR)/am5-spd-diag.1
 	$(INSTALL_DATA) systemd/$(NAME).tmpfiles.conf $(DESTDIR)$(TMPFILESDIR)/$(NAME).conf
+	$(INSTALL_DATA) systemd/$(NAME)-purge.conf $(DESTDIR)$(SHAREDIR)/tmpfiles-purge.conf
 	sed -e 's|@HELPER@|$(LIBEXECDIR)/pkexec-snapshot|g' \
 	    -e 's|@LIBEXEC@|$(LIBEXECDIR)|g' \
 	  polkit/org.opensuse.am5-spd-diag.snapshot.policy.in \
