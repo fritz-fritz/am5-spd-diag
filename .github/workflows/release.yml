@@ -12,7 +12,9 @@
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   OBS_USER      OBS account that owns home:fritz-fritz
-#   OBS_PASSWORD  OBS password / app password for osc (api.opensuse.org)
+#   OBS_PASSWORD  that account's password for osc HTTP Basic Auth
+#                 (api.opensuse.org). Not a rebuild/release/service/workflow
+#                 trigger token from Profile → Tokens.
 #
 # workflow_dispatch retries asset attach for an existing tag. Leave
 # commit_obs off if OBS already has the sources (wait timed out). Turn it
