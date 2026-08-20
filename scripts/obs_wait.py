@@ -77,11 +77,24 @@ def is_payload(name: str, version: str) -> bool:
     return name.endswith(".rpm") or name.endswith(".deb")
 
 
-def finished_ok(pending: list[str], ready: list[str]) -> bool | None:
-    """None = keep polling. True = versioned payloads exist. False = nothing left."""
+def finished_ok(
+    pending: list[str],
+    ready: list[str],
+    failed: list[str] | None = None,
+) -> bool | None:
+    """None = keep polling. True = versioned payloads exist. False = give up.
+
+    Stale ``failed`` rows after ``osc commit`` must not abort: OBS often has
+    not scheduled the rebuild yet. Keep polling until a live code appears,
+    a payload shows up, or the timeout hits.
+    """
     if pending:
         return None
-    return bool(ready)
+    if ready:
+        return True
+    if failed:
+        return None
+    return False
 
 
 def snapshot(
@@ -185,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
         print("skip:   " + (", ".join(skipped) if skipped else "(none)"))
         if failed:
             print("failed: " + ", ".join(failed), file=sys.stderr)
-        outcome = finished_ok(pending, ready)
+        outcome = finished_ok(pending, ready, failed)
         if outcome is True:
             print("obs_wait: versioned binaries are ready")
             return 0

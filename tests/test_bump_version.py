@@ -216,6 +216,8 @@ def test_obs_wait_payload() -> None:
     assert wait.finished_ok(["tw/x86_64: building"], []) is None
     assert wait.finished_ok([], ["tw/x86_64: succeeded"]) is True
     assert wait.finished_ok([], []) is False
+    assert wait.finished_ok([], [], ["tw/x86_64: failed"]) is None
+    assert wait.finished_ok([], ["tw/x86_64: succeeded"], ["ubuntu/x86_64: failed"]) is True
     assert wait.collapse_results(
         [
             ("Debian_12", "x86_64", "succeeded"),
