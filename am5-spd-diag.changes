@@ -1,4 +1,12 @@
 -------------------------------------------------------------------
+Thu Aug 20 18:50:39 UTC 2026 - Fritz <code@fritztech.net>
+
+- Stop hardlinking pkexec helpers across /usr/bin and /usr/libexec (openSUSE
+  rpmlint hardlink-across-partition). Keep one inode in libexec and a bindir
+  symlink. Use addFilter() in the package rpmlintrc so Factory polkit checks
+  are actually suppressed.
+
+-------------------------------------------------------------------
 Thu Aug 20 18:10:39 UTC 2026 - Fritz <code@fritztech.net>
 
 - Strip release binaries at rustc (thin LTO), skip rpm debuginfo and Debian
