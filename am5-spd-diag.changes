@@ -1,4 +1,10 @@
 -------------------------------------------------------------------
+Thu Aug 20 10:50:13 UTC 2026 - Fritz <code@fritztech.net>
+
+- Split OBS sources and pin official rustc 1.92 so older distros can build.
+  Not a Ghost DIMM behavior change.
+
+-------------------------------------------------------------------
 Wed Aug 19 12:30:00 UTC 2026 - Fritz <code@fritztech.net>
 
 - Make /var/log/am5-spd-diag 0755 root:root and write capture state

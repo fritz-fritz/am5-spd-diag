@@ -1,5 +1,7 @@
-am5-spd-diag (1.0.0-1) unstable; urgency=medium
+am5-spd-diag (1.0.1-1) unstable; urgency=medium
 
+  * Split OBS sources and pin official rustc 1.92 so older distros can
+    build. Not a Ghost DIMM behavior change.
   * Make /var/log/am5-spd-diag 0755 root:root and write capture state with
     O_NOFOLLOW so a local user cannot symlink-swap passwordless snapshot
     into a root file write.
@@ -41,4 +43,4 @@ am5-spd-diag (1.0.0-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Wed, 19 Aug 2026 12:30:00 +0000
+ -- Fritz <code@fritztech.net>  Thu, 20 Aug 2026 10:50:13 +0000
