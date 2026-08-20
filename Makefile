@@ -292,14 +292,27 @@ vendor:
 	$(CARGO) vendor --locked vendor > .cargo/config.toml
 	@echo "Vendored crates into vendor/ (.cargo/config.toml for OBS --offline)"
 
+# Snapshot the vendored tree to /tmp, then pack that frozen copy with an
+# absolute -f path. Packing the live checkout lets GNU tar exit 1 ("file
+# changed as we read it") after cargo vendor, and a relative -f can land
+# the archive inside the tree instead of the parent the release workflow
+# copies from.
 dist: vendor
-	# GNU tar exits 1 if a directory mtime shifts while packing a freshly
-	# vendored tree ("file changed as we read it") after writing a complete
-	# archive. Exit 2+ is a real failure.
-	tar -C .. -cJf $(NAME)-$(VERSION).tar.xz \
-	  --exclude=.osc --exclude='*.tar.xz' --exclude=debian \
-	  --exclude=__pycache__ --exclude='*.pyc' \
-	  --exclude=$(NAME).spec --exclude=$(NAME).changes \
-	  --exclude=target --exclude=.git --exclude=.cargo-home \
+	@set -eu; \
+	parent="$(abspath $(CURDIR)/..)"; \
+	snap=$$(mktemp -d /tmp/$(NAME)-dist.XXXXXX); \
+	out="/tmp/$(NAME)-$(VERSION).$$$$.tar.xz"; \
+	trap 'rm -rf "$$snap"; rm -f "$$out"' EXIT; \
+	cp -a "$(CURDIR)" "$$snap/$(NAME)"; \
+	rm -rf "$$snap/$(NAME)/target" "$$snap/$(NAME)/.git" \
+	  "$$snap/$(NAME)/.osc" "$$snap/$(NAME)/debian" \
+	  "$$snap/$(NAME)/.cargo-home"; \
+	rm -f "$$snap/$(NAME)/"*.tar.xz \
+	  "$$snap/$(NAME)/$(NAME).spec" \
+	  "$$snap/$(NAME)/$(NAME).changes"; \
+	tar -C "$$snap" --exclude=__pycache__ --exclude='*.pyc' -cJf "$$out" \
 	  --transform 's,^$(NAME),$(NAME)-$(VERSION),' \
-	  $(NAME) || [ $$? -eq 1 ]
+	  $(NAME); \
+	test -s "$$out"; \
+	mv -f "$$out" "$$parent/$(NAME)-$(VERSION).tar.xz"; \
+	echo "Wrote $$parent/$(NAME)-$(VERSION).tar.xz"
