@@ -6,24 +6,23 @@
 #   3. git tag vX.Y.Z && git push origin vX.Y.Z
 #
 # Dist, tests, and the OBS source tarball always come from the tagged
-# commit (workflow_dispatch ref= that tag). Orchestration scripts come
-# from the workflow revision so an old tag can still be published.
+# commit (workflow_dispatch checks out that tag). Orchestration scripts
+# (osc wait, notes, version gate) come from the workflow revision so an
+# already-published tag can still be finished without moving it.
 #
-# OBS Profile → Tokens: create type **rebuild**, bound to
-# home:fritz-fritz / am5-spd-diag. That token cannot osc commit; it only
-# starts a build of whatever sources are already in that package.
-# workflow / service / release tokens are the wrong kind (webhook SCM
-# CI, _service rerun, or copying binaries between OBS projects).
+# Immutable GitHub Releases: new rpm/deb names can be attached; an
+# existing tarball cannot be replaced. Linear history on master only
+# affects how PRs merge (squash); it does not require a new tag.
 #
-# Repository secrets (Settings → Secrets and variables → Actions):
-#   OBS_USER           OBS account that owns home:fritz-fritz
-#   OBS_PASSWORD       that account's password (osc checkout/commit/getbinaries)
-#   OBS_REBUILD_TOKEN  rebuild trigger token string (optional; used after commit)
+# Repository secrets:
+#   OBS_USER      OBS account that owns home:fritz-fritz
+#   OBS_PASSWORD  that account's password for osc (commit already queues
+#                 the build; no separate rebuild trigger token)
 #
 # workflow_dispatch of a previous tag checks out that tag. Leave
 # commit_obs off to attach binaries already on OBS. Turn it on to upload
-# that tag's vendored tarball. That is refused if OBS already has a
-# newer Version, unless force_obs_commit (would roll the live package back).
+# that tag's vendored tarball. Refused if OBS already has a newer Version,
+# unless force_obs_commit (would roll the live package back).
 
 name: Release
 
@@ -195,21 +194,6 @@ jobs:
             $osc add "$OBS_PACKAGE-$VERSION.tar.xz" || true
             $osc commit -m "Release $VERSION from $TAG ($SOURCE_SHA)"
           )
-
-      - name: Trigger OBS rebuild
-        if: steps.osc.outputs.skip != 'true' && steps.gate.outputs.commit == 'true'
-        env:
-          OBS_REBUILD_TOKEN: ${{ secrets.OBS_REBUILD_TOKEN }}
-        working-directory: .
-        run: |
-          if [ -z "$OBS_REBUILD_TOKEN" ]; then
-            echo "OBS_REBUILD_TOKEN unset; osc commit already queued a build."
-            exit 0
-          fi
-          python3 workflow-src/scripts/obs_trigger.py \
-            --token "$OBS_REBUILD_TOKEN" \
-            --project "$OBS_PROJECT" \
-            --package "$OBS_PACKAGE"
 
       - name: Wait for OBS binaries
         if: steps.osc.outputs.skip != 'true'

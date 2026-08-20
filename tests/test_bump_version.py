@@ -223,16 +223,6 @@ def test_obs_release_gate() -> None:
     assert rel.allow_commit("1.0.0", "1.0.1", True)
 
 
-def test_obs_rebuild_url() -> None:
-    sys.path.insert(0, str(ROOT / "scripts"))
-    import obs_trigger as trig  # noqa: E402
-
-    url = trig.rebuild_url("https://api.opensuse.org", "home:fritz-fritz", "am5-spd-diag")
-    assert url.startswith("https://api.opensuse.org/trigger/rebuild?")
-    assert "project=home%3Afritz-fritz" in url
-    assert "package=am5-spd-diag" in url
-
-
 def test_release_notes_mentions_obs() -> None:
     sys.path.insert(0, str(ROOT / "scripts"))
     import release_notes as notes  # noqa: E402
@@ -277,6 +267,5 @@ if __name__ == "__main__":
     test_check_tree()
     test_obs_wait_payload()
     test_obs_release_gate()
-    test_obs_rebuild_url()
     test_release_notes_mentions_obs()
     print("ok")
