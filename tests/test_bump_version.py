@@ -308,6 +308,8 @@ def test_obs_package_meta_disables_eol_repos() -> None:
     prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
     assert "Prefer: libselinux-dev" in prjconf
     assert "Prefer: libjpeg-dev" in prjconf
+    fmt = (ROOT / "debian/source/format").read_text(encoding="utf-8").strip()
+    assert fmt == "1.0", fmt
 
 
 def _write_tree(root: Path) -> None:

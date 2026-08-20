@@ -89,6 +89,6 @@ fi
 
 cd "$OSC_WC"
 if [ "${#PRELOAD_FLAGS[@]}" -gt 0 ]; then
-	osc build --trust-all-projects "${PRELOAD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"
+	osc build --trust-all-projects --no-verify "${PRELOAD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"
 fi
-osc build --trust-all-projects "${BUILD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"
+osc build --trust-all-projects --no-verify "${BUILD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"
