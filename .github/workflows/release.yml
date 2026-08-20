@@ -88,8 +88,10 @@ jobs:
       - name: Dist
         run: |
           make dist
-          test -s "../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz"
-          cp -f "../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz" .
+          tarball="../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz"
+          ls -la "$tarball"
+          test -s "$tarball"
+          cp -f "$tarball" .
 
       - name: Configure osc
         working-directory: .
