@@ -179,7 +179,10 @@ impl TimelineEvent {
 
 pub fn value_as_i64(v: &Value) -> i64 {
     match v {
-        Value::Number(n) => n.as_i64().or_else(|| n.as_u64().map(|u| u as i64)).unwrap_or(0),
+        Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_u64().map(|u| u as i64))
+            .unwrap_or(0),
         Value::String(s) => s.parse().unwrap_or(0),
         _ => 0,
     }
@@ -285,9 +288,7 @@ mod tests {
 
     #[test]
     fn fixture_hub_json_contract() {
-        let path = repo_root().join(
-            "tests/fixture/events/20260817T043030.0Z-boot/hub.json",
-        );
+        let path = repo_root().join("tests/fixture/events/20260817T043030.0Z-boot/hub.json");
         let hub: HubProbe = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(hub.dmesg_stuck, vec!["1-0053".to_string()]);
         assert_eq!(hub.stuck.len(), 1);
@@ -303,7 +304,10 @@ mod tests {
         let path = repo_root().join("tests/fixture/baseline.json");
         let base: Baseline = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(value_as_i64(&base.memtotal_kb), 32000000);
-        assert_eq!(base.dmi.get("bios_version").map(String::as_str), Some("2.A52"));
+        assert_eq!(
+            base.dmi.get("bios_version").map(String::as_str),
+            Some("2.A52")
+        );
         assert_eq!(base.dimms.len(), 2);
         assert_eq!(base.dimms[0]["part"], "CMH32GX5M2M6000Z36");
     }

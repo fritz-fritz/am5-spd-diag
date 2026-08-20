@@ -11,6 +11,8 @@ pub mod hub;
 pub mod i2c;
 pub mod notify;
 pub mod paths;
+pub mod purge;
+pub mod safe_fs;
 pub mod schema;
 pub mod smbios;
 

@@ -7,7 +7,7 @@ RequiresMountsFor=/var/log
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/am5-spd-diag capture post
+ExecStart=-/usr/bin/am5-spd-diag capture post
 TimeoutStartSec=30
 
 [Install]

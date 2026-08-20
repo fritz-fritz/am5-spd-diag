@@ -87,7 +87,9 @@ pub struct Context {
 }
 
 pub fn utc_stamp() -> String {
-    let t = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    let t = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = t.as_secs() as i64;
     chrono::DateTime::from_timestamp(secs, 0)
         .unwrap_or_else(|| chrono::DateTime::from_timestamp(0, 0).unwrap())
@@ -224,22 +226,17 @@ pub struct PackageSession {
 /// Open a `.tar.gz` package or an already-extracted directory that contains `timeline.jsonl`.
 pub fn open_package(path: &Path) -> Result<PackageSession, String> {
     if path.is_dir() {
-        let root = find_package_root(path).ok_or_else(|| {
-            format!("no timeline.jsonl in {}", path.display())
-        })?;
-        return Ok(PackageSession {
-            _keep: None,
-            root,
-        });
+        let root = find_package_root(path)
+            .ok_or_else(|| format!("no timeline.jsonl in {}", path.display()))?;
+        return Ok(PackageSession { _keep: None, root });
     }
     if !path.is_file() {
         return Err(format!("package not found: {}", path.display()));
     }
     let tmp = staging_tempdir("am5-spd-diag-from-")?;
     extract_package_archive(path, tmp.path())?;
-    let root = find_package_root(tmp.path()).ok_or_else(|| {
-        format!("archive has no timeline.jsonl: {}", path.display())
-    })?;
+    let root = find_package_root(tmp.path())
+        .ok_or_else(|| format!("archive has no timeline.jsonl: {}", path.display()))?;
     Ok(PackageSession {
         _keep: Some(tmp),
         root,
@@ -252,9 +249,7 @@ fn extract_package_archive(archive: &Path, dest: &Path) -> Result<(), String> {
     let mut tar = tar::Archive::new(dec);
     for entry in tar.entries().map_err(|e| format!("tar: {e}"))? {
         let mut entry = entry.map_err(|e| format!("tar: {e}"))?;
-        let _ = entry
-            .unpack_in(dest)
-            .map_err(|e| format!("extract: {e}"))?;
+        let _ = entry.unpack_in(dest).map_err(|e| format!("extract: {e}"))?;
     }
     Ok(())
 }
@@ -326,7 +321,9 @@ pub fn live_cpu_info() -> BTreeMap<String, String> {
         ("microcode", "microcode"),
     ]);
     for line in text.lines() {
-        let Some((key, val)) = line.split_once(':') else { continue };
+        let Some((key, val)) = line.split_once(':') else {
+            continue;
+        };
         let key = key.trim().to_ascii_lowercase();
         if let Some(dest) = mapping.get(key.as_str()) {
             if !info.contains_key(*dest) {
@@ -338,7 +335,10 @@ pub fn live_cpu_info() -> BTreeMap<String, String> {
 }
 
 pub fn live_cpu() -> String {
-    live_cpu_info().get("model_name").cloned().unwrap_or_default()
+    live_cpu_info()
+        .get("model_name")
+        .cloned()
+        .unwrap_or_default()
 }
 
 pub fn live_os_info() -> BTreeMap<String, String> {
@@ -350,7 +350,10 @@ pub fn live_os_info() -> BTreeMap<String, String> {
 
 pub fn live_os() -> String {
     let data = live_os_info();
-    data.get("PRETTY_NAME").cloned().or_else(|| data.get("NAME").cloned()).unwrap_or_default()
+    data.get("PRETTY_NAME")
+        .cloned()
+        .or_else(|| data.get("NAME").cloned())
+        .unwrap_or_default()
 }
 
 pub fn live_kernel_info() -> BTreeMap<String, String> {
@@ -373,7 +376,11 @@ fn uname() -> (String, String, String, String) {
     let mut u = unsafe { std::mem::zeroed::<libc::utsname>() };
     unsafe { libc::uname(&mut u) };
     let to_s = |buf: &[libc::c_char]| {
-        let bytes: Vec<u8> = buf.iter().map(|c| *c as u8).take_while(|b| *b != 0).collect();
+        let bytes: Vec<u8> = buf
+            .iter()
+            .map(|c| *c as u8)
+            .take_while(|b| *b != 0)
+            .collect();
         String::from_utf8_lossy(&bytes).into_owned()
     };
     (
@@ -477,8 +484,12 @@ pub fn dimm_table(dimms: &[BTreeMap<String, String>]) -> String {
             "| {} | {} | {width} | {} | {} | {} | {} | {} |",
             d.get("locator").map(String::as_str).unwrap_or("?"),
             d.get("size").map(String::as_str).unwrap_or("?"),
-            d.get("speed").map(|s| if s.is_empty() { "?" } else { s }).unwrap_or("?"),
-            d.get("mem_type").map(|s| if s.is_empty() { "?" } else { s }).unwrap_or("?"),
+            d.get("speed")
+                .map(|s| if s.is_empty() { "?" } else { s })
+                .unwrap_or("?"),
+            d.get("mem_type")
+                .map(|s| if s.is_empty() { "?" } else { s })
+                .unwrap_or("?"),
             d.get("manufacturer").map(String::as_str).unwrap_or("?"),
             d.get("part").map(String::as_str).unwrap_or("?"),
             d.get("serial").map(String::as_str).unwrap_or("?"),
@@ -601,7 +612,10 @@ pub fn recover_cleared(ev: &TimelineEvent) -> bool {
         .unwrap_or(false)
 }
 
-pub fn recover_this_boot<'a>(events: &'a [TimelineEvent], boot_id: &str) -> Option<&'a TimelineEvent> {
+pub fn recover_this_boot<'a>(
+    events: &'a [TimelineEvent],
+    boot_id: &str,
+) -> Option<&'a TimelineEvent> {
     events
         .iter()
         .rev()
@@ -610,7 +624,10 @@ pub fn recover_this_boot<'a>(events: &'a [TimelineEvent], boot_id: &str) -> Opti
 
 pub fn recover_before_latest_boot(events: &[TimelineEvent]) -> Option<&TimelineEvent> {
     let boot_idx = events.iter().rposition(|e| e.event == "boot")?;
-    events[..boot_idx].iter().rev().find(|e| e.event == "recover")
+    events[..boot_idx]
+        .iter()
+        .rev()
+        .find(|e| e.event == "recover")
 }
 
 pub fn recover_status_lines(events: &[TimelineEvent], spd_now: &str) -> Vec<String> {
@@ -703,7 +720,8 @@ pub fn find_transitions(events: &[TimelineEvent]) -> Vec<Transition> {
             .map(|(_, evs)| sleep_cycles(evs))
             .unwrap_or(0);
         let boot_kind = infer_boot_kind(events, i);
-        let reboot_between = boot_kind == "warm_reboot" || chain.iter().any(|p| p.event == "reboot");
+        let reboot_between =
+            boot_kind == "warm_reboot" || chain.iter().any(|p| p.event == "reboot");
         let mut stuck = Vec::new();
         if let Some(arr) = ev.hub.get("stuck").and_then(|v| v.as_array()) {
             for row in arr {
@@ -729,7 +747,12 @@ pub fn find_transitions(events: &[TimelineEvent]) -> Vec<Transition> {
                 .cloned()
                 .unwrap_or_else(|| last_pre.mem_sleep.clone());
         }
-        let bad_dimms: Vec<_> = ev.dimms.iter().filter(|d| !dimm_flags(d).is_empty()).cloned().collect();
+        let bad_dimms: Vec<_> = ev
+            .dimms
+            .iter()
+            .filter(|d| !dimm_flags(d).is_empty())
+            .cloned()
+            .collect();
         let mut full_chain = chain;
         full_chain.push(ev.clone());
         transitions.push(Transition {
@@ -747,7 +770,11 @@ pub fn find_transitions(events: &[TimelineEvent]) -> Vec<Transition> {
     transitions
 }
 
-pub fn render_pattern(_events: &[TimelineEvent], boots: &[(String, Vec<TimelineEvent>)], transitions: &[Transition]) -> String {
+pub fn render_pattern(
+    _events: &[TimelineEvent],
+    boots: &[(String, Vec<TimelineEvent>)],
+    transitions: &[Transition],
+) -> String {
     if transitions.is_empty() {
         let healthy_sleep = boots
             .iter()
@@ -805,7 +832,11 @@ pub fn render_pattern(_events: &[TimelineEvent], boots: &[(String, Vec<TimelineE
 }
 
 fn md_cell(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ").trim().to_string()
+    value
+        .replace('|', "\\|")
+        .replace('\n', " ")
+        .trim()
+        .to_string()
 }
 
 fn is_dmi_placeholder(value: &str) -> bool {
@@ -842,10 +873,18 @@ fn md_kv_table(rows: &[(&str, String)]) -> String {
 }
 
 fn dimm_key(dimm: &BTreeMap<String, String>) -> Vec<String> {
-    ["locator", "size", "total_width", "data_width", "manufacturer", "part", "serial"]
-        .iter()
-        .map(|k| dimm.get(*k).cloned().unwrap_or_default().trim().to_string())
-        .collect()
+    [
+        "locator",
+        "size",
+        "total_width",
+        "data_width",
+        "manufacturer",
+        "part",
+        "serial",
+    ]
+    .iter()
+    .map(|k| dimm.get(*k).cloned().unwrap_or_default().trim().to_string())
+    .collect()
 }
 
 fn dimms_match(a: &[BTreeMap<String, String>], b: &[BTreeMap<String, String>]) -> bool {
@@ -895,7 +934,10 @@ pub fn hardware_table(
         &map_str(&baseline.dmi, "bios_version"),
         cfg.get("FALLBACK_BIOS"),
     ]);
-    let bios_date = first_nonempty(&[&map_str(&dmi, "bios_date"), &map_str(&baseline.dmi, "bios_date")]);
+    let bios_date = first_nonempty(&[
+        &map_str(&dmi, "bios_date"),
+        &map_str(&baseline.dmi, "bios_date"),
+    ]);
     let vendor = first_nonempty(&[
         &map_str(&dmi, "board_vendor"),
         &map_str(&dmi, "sys_vendor"),
@@ -913,7 +955,10 @@ pub fn hardware_table(
     }
     let base_kb = value_as_i64(&baseline.memtotal_kb);
     if base_kb != 0 {
-        memory = format!("{memory} (healthy MemTotal {base_kb} kB / {})", kb_to_gib(base_kb));
+        memory = format!(
+            "{memory} (healthy MemTotal {base_kb} kB / {})",
+            kb_to_gib(base_kb)
+        );
     }
     let chassis = map_str(&dmi, "chassis_type");
     let chassis_s = chassis_types()
@@ -966,7 +1011,10 @@ pub fn hardware_table(
     if !product_ver.is_empty() && product_ver == board_ver {
         product_ver.clear();
     }
-    let board_serial = first_nonempty(&[&map_str(&dmi, "board_serial"), &map_str(&baseline.dmi, "board_serial")]);
+    let board_serial = first_nonempty(&[
+        &map_str(&dmi, "board_serial"),
+        &map_str(&baseline.dmi, "board_serial"),
+    ]);
     let bios_line = if bios_date.is_empty() {
         bios.clone()
     } else {
@@ -995,8 +1043,19 @@ pub fn hardware_table(
         ("BIOS vendor", map_str(&dmi, "bios_vendor")),
         ("BIOS version", bios_line),
         ("BIOS revision", map_str(&dmi, "bios_release")),
-        ("Firmware boot mode", if boot.is_empty() { boot_mode() } else { boot }),
-        ("CPU", first_nonempty(&[&value_map_str(&cpu_info, "model_name"), cpu.as_str(), &baseline.cpu, cfg.get("FALLBACK_CPU")])),
+        (
+            "Firmware boot mode",
+            if boot.is_empty() { boot_mode() } else { boot },
+        ),
+        (
+            "CPU",
+            first_nonempty(&[
+                &value_map_str(&cpu_info, "model_name"),
+                cpu.as_str(),
+                &baseline.cpu,
+                cfg.get("FALLBACK_CPU"),
+            ]),
+        ),
         ("CPU ID", cpu_ids),
         ("CPU microcode", value_map_str(&cpu_info, "microcode")),
         (
@@ -1010,7 +1069,10 @@ pub fn hardware_table(
         ("OS", os_line),
         ("Kernel", kernel_line),
         ("Kernel build", value_map_str(&kinfo, "version")),
-        ("Sleep policy", if sleep.is_empty() { mem_sleep() } else { sleep }),
+        (
+            "Sleep policy",
+            if sleep.is_empty() { mem_sleep() } else { sleep },
+        ),
     ])
 }
 
@@ -1031,12 +1093,18 @@ pub fn system_identity_rows(
     let dmi_sys = system_owned.get("dmi").cloned().unwrap_or(json!({}));
     let board = first_nonempty(&[
         dmi.get("board_name").map(String::as_str).unwrap_or(""),
-        dmi_sys.get("board_name").and_then(|v| v.as_str()).unwrap_or(""),
+        dmi_sys
+            .get("board_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
         "unknown board",
     ]);
     let bios = first_nonempty(&[
         dmi.get("bios_version").map(String::as_str).unwrap_or(""),
-        dmi_sys.get("bios_version").and_then(|v| v.as_str()).unwrap_or(""),
+        dmi_sys
+            .get("bios_version")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
         "unknown BIOS",
     ]);
     let cpu = first_nonempty(&[
@@ -1064,7 +1132,10 @@ pub fn system_identity_rows(
         "unknown OS",
     ]);
     let mode = first_nonempty(&[
-        system_owned.get("boot_mode").and_then(|v| v.as_str()).unwrap_or(""),
+        system_owned
+            .get("boot_mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
         &boot_mode(),
     ]);
     vec![
@@ -1086,7 +1157,12 @@ pub fn system_identity_table(
     md_kv_table(&system_identity_rows(dmi, cpu, kernel, system))
 }
 
-pub fn system_oneliner(dmi: &BTreeMap<String, String>, cpu: &str, kernel: &str, system: Option<&Value>) -> String {
+pub fn system_oneliner(
+    dmi: &BTreeMap<String, String>,
+    cpu: &str,
+    kernel: &str,
+    system: Option<&Value>,
+) -> String {
     system_identity_rows(dmi, cpu, kernel, system)
         .into_iter()
         .map(|(key, val)| format!("\n · {}: {val}", key.to_ascii_uppercase()))
@@ -1105,14 +1181,20 @@ fn capture_ident(ev: &TimelineEvent) -> BTreeMap<String, String> {
         ),
         (
             "event".into(),
-            first_nonempty(&[&ev.event, ev.meta.get("event").map(String::as_str).unwrap_or("")]),
+            first_nonempty(&[
+                &ev.event,
+                ev.meta.get("event").map(String::as_str).unwrap_or(""),
+            ]),
         ),
         ("bios".into(), value_map_str(&kdmi, "bios_version")),
         ("bios_date".into(), value_map_str(&kdmi, "bios_date")),
         ("board".into(), value_map_str(&kdmi, "board_name")),
         (
             "os".into(),
-            first_nonempty(&[&value_map_str(&osinfo, "PRETTY_NAME"), &value_map_str(&osinfo, "NAME")]),
+            first_nonempty(&[
+                &value_map_str(&osinfo, "PRETTY_NAME"),
+                &value_map_str(&osinfo, "NAME"),
+            ]),
         ),
         (
             "kernel".into(),
@@ -1129,8 +1211,14 @@ fn captured_system_table(events: &[TimelineEvent], live: &Value) -> String {
         return "_No captures yet._".into();
     }
     let live_d = live.get("dmi").cloned().unwrap_or(json!({}));
-    let live_k = first_nonempty(&[&value_map_str(live.get("kernel").unwrap_or(&json!({})), "release"), &live_kernel()]);
-    let live_os_name = first_nonempty(&[&value_map_str(live.get("os").unwrap_or(&json!({})), "PRETTY_NAME"), &live_os()]);
+    let live_k = first_nonempty(&[
+        &value_map_str(live.get("kernel").unwrap_or(&json!({})), "release"),
+        &live_kernel(),
+    ]);
+    let live_os_name = first_nonempty(&[
+        &value_map_str(live.get("os").unwrap_or(&json!({})), "PRETTY_NAME"),
+        &live_os(),
+    ]);
     let live_bios = value_map_str(&live_d, "bios_version");
     let live_board = value_map_str(&live_d, "board_name");
     let latest = capture_ident(events.last().unwrap());
@@ -1155,7 +1243,10 @@ fn captured_system_table(events: &[TimelineEvent], live: &Value) -> String {
     if diffs.is_empty() {
         lines.push("- Latest capture BIOS/board/OS/kernel match the live table above.".into());
     } else {
-        lines.push(format!("- Latest capture differs from live: {}", diffs.join("; ")));
+        lines.push(format!(
+            "- Latest capture differs from live: {}",
+            diffs.join("; ")
+        ));
     }
     if let Some(alert_ev) = alert_ev {
         let alert = capture_ident(alert_ev);
@@ -1203,7 +1294,10 @@ fn dimm_report_section(
             dimm_table(corrupt),
         ]);
     } else if corrupt.is_empty() {
-        parts.extend([String::new(), "_No corrupt DIMM snapshot recorded yet._".into()]);
+        parts.extend([
+            String::new(),
+            "_No corrupt DIMM snapshot recorded yet._".into(),
+        ]);
     }
     parts.join("\n")
 }
@@ -1235,7 +1329,9 @@ fn corrupt_dimm_lines(dimms: &[BTreeMap<String, String>]) -> Vec<String> {
         lines.push(format!(
             "  {}: part {}, width {}/{} ({})",
             d.get("locator").map(String::as_str).unwrap_or("?"),
-            d.get("part").map(|s| if s.is_empty() { "empty" } else { s }).unwrap_or("empty"),
+            d.get("part")
+                .map(|s| if s.is_empty() { "empty" } else { s })
+                .unwrap_or("empty"),
             d.get("total_width").map(String::as_str).unwrap_or("?"),
             d.get("data_width").map(String::as_str).unwrap_or("?"),
             flags.join(", "),
@@ -1260,7 +1356,12 @@ pub fn spd_now_from_state(state_dir: &Path, events: &[TimelineEvent]) -> (String
                 flag_list.extend(dimm_flags(d));
             }
         }
-        if latest.hub.get("stuck").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false)
+        if latest
+            .hub
+            .get("stuck")
+            .and_then(|v| v.as_array())
+            .map(|a| !a.is_empty())
+            .unwrap_or(false)
             && !flag_list.iter().any(|f| f == "hub_mr11_stuck")
         {
             flag_list.push("hub_mr11_stuck".into());
@@ -1269,10 +1370,20 @@ pub fn spd_now_from_state(state_dir: &Path, events: &[TimelineEvent]) -> (String
     let spd_file = fs::read_to_string(state_dir.join("SPD_NOW"))
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
-    if !flag_list.is_empty() || spd_file == "corrupt" || latest.map(|e| e.is_alert()).unwrap_or(false) {
+    if !flag_list.is_empty()
+        || spd_file == "corrupt"
+        || latest.map(|e| e.is_alert()).unwrap_or(false)
+    {
         let details = corrupt_dimm_lines(&dimms);
         let details = if details.is_empty() {
-            vec![format!("  flags: {}", if flag_list.is_empty() { "alert".into() } else { flag_list.join(", ") })]
+            vec![format!(
+                "  flags: {}",
+                if flag_list.is_empty() {
+                    "alert".into()
+                } else {
+                    flag_list.join(", ")
+                }
+            )]
         } else {
             details
         };
@@ -1293,14 +1404,27 @@ pub fn spd_now_from_state(state_dir: &Path, events: &[TimelineEvent]) -> (String
     ("healthy".into(), Vec::new())
 }
 
-fn dimm_change_lines(before: &[BTreeMap<String, String>], after: &[BTreeMap<String, String>]) -> Vec<String> {
+fn dimm_change_lines(
+    before: &[BTreeMap<String, String>],
+    after: &[BTreeMap<String, String>],
+) -> Vec<String> {
     let by_b: BTreeMap<_, _> = before
         .iter()
-        .map(|d| (d.get("locator").cloned().unwrap_or_else(|| "?".into()), d.clone()))
+        .map(|d| {
+            (
+                d.get("locator").cloned().unwrap_or_else(|| "?".into()),
+                d.clone(),
+            )
+        })
         .collect();
     let by_a: BTreeMap<_, _> = after
         .iter()
-        .map(|d| (d.get("locator").cloned().unwrap_or_else(|| "?".into()), d.clone()))
+        .map(|d| {
+            (
+                d.get("locator").cloned().unwrap_or_else(|| "?".into()),
+                d.clone(),
+            )
+        })
         .collect();
     let mut locs: Vec<_> = by_b.keys().cloned().collect();
     for k in by_a.keys() {
@@ -1319,16 +1443,22 @@ fn dimm_change_lines(before: &[BTreeMap<String, String>], after: &[BTreeMap<Stri
                 lines.push(format!(
                     "- {loc}: unchanged ({} {})",
                     b.get("size").map(String::as_str).unwrap_or("?"),
-                    b.get("part").map(|s| if s.is_empty() { "empty" } else { s }).unwrap_or("empty")
+                    b.get("part")
+                        .map(|s| if s.is_empty() { "empty" } else { s })
+                        .unwrap_or("empty")
                 ));
             }
             (Some(b), Some(a)) => lines.push(format!(
                 "- {loc}: {} {} {} → {} {} {}",
                 b.get("size").map(String::as_str).unwrap_or("?"),
-                b.get("part").map(|s| if s.is_empty() { "empty" } else { s }).unwrap_or("empty"),
+                b.get("part")
+                    .map(|s| if s.is_empty() { "empty" } else { s })
+                    .unwrap_or("empty"),
                 b.get("total_width").map(String::as_str).unwrap_or("?"),
                 a.get("size").map(String::as_str).unwrap_or("?"),
-                a.get("part").map(|s| if s.is_empty() { "empty" } else { s }).unwrap_or("empty"),
+                a.get("part")
+                    .map(|s| if s.is_empty() { "empty" } else { s })
+                    .unwrap_or("empty"),
                 a.get("total_width").map(String::as_str).unwrap_or("?"),
             )),
         }
@@ -1343,7 +1473,11 @@ pub fn render_transitions(transitions: &[Transition]) -> String {
     let mut blocks = Vec::new();
     for (idx, tr) in transitions.iter().enumerate() {
         let alert_ev = &tr.alert_event;
-        let healthy_kb = tr.prev_healthy.as_ref().map(|h| h.memtotal_kb_i64()).unwrap_or(0);
+        let healthy_kb = tr
+            .prev_healthy
+            .as_ref()
+            .map(|h| h.memtotal_kb_i64())
+            .unwrap_or(0);
         let alert_kb = alert_ev.memtotal_kb_i64();
         let mut kind = tr.boot_kind.clone();
         if kind == "unexpected_power_loss" {
@@ -1353,15 +1487,29 @@ pub fn render_transitions(transitions: &[Transition]) -> String {
         }
         blocks.push(format!("### Transition {}", idx + 1));
         blocks.push(String::new());
-        let hts = tr.prev_healthy.as_ref().map(|h| h.ts.as_str()).unwrap_or("unknown");
-        let hev = tr.prev_healthy.as_ref().map(|h| h.event.as_str()).unwrap_or("unknown");
+        let hts = tr
+            .prev_healthy
+            .as_ref()
+            .map(|h| h.ts.as_str())
+            .unwrap_or("unknown");
+        let hev = tr
+            .prev_healthy
+            .as_ref()
+            .map(|h| h.event.as_str())
+            .unwrap_or("unknown");
         blocks.push(format!(
             "- Last healthy: `{hts}` event `{hev}` firmware published {healthy_kb} kB ({})",
             kb_to_gib(healthy_kb)
         ));
-        blocks.push(format!("- Sleep cycles on the previous boot: **{}**", tr.sleep_count));
+        blocks.push(format!(
+            "- Sleep cycles on the previous boot: **{}**",
+            tr.sleep_count
+        ));
         if !tr.mem_sleep.is_empty() {
-            blocks.push(format!("- Sleep mode on last suspend-pre: `{}`", tr.mem_sleep));
+            blocks.push(format!(
+                "- Sleep mode on last suspend-pre: `{}`",
+                tr.mem_sleep
+            ));
         }
         blocks.push(format!("- How this boot started: **{kind}**"));
         if !tr.stuck_hubs.is_empty() {
@@ -1378,7 +1526,10 @@ pub fn render_transitions(transitions: &[Transition]) -> String {
             alert_ev.flags
         ));
         let changes = dimm_change_lines(
-            tr.prev_healthy.as_ref().map(|h| h.dimms.as_slice()).unwrap_or(&[]),
+            tr.prev_healthy
+                .as_ref()
+                .map(|h| h.dimms.as_slice())
+                .unwrap_or(&[]),
             &alert_ev.dimms,
         );
         if !changes.is_empty() {
@@ -1474,8 +1625,14 @@ pub fn hub_section(events: &[TimelineEvent], transitions: &[Transition]) -> Stri
         if ev.event == "recover" {
             add(format!(
                 "{label}: in-band MR11 fix ok={} reason=`{}`",
-                ev.recover.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
-                ev.recover.get("reason").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                ev.recover
+                    .get("ok")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                ev.recover
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown"),
             ));
         }
         if let Some(stuck) = hub.get("dmesg_stuck").and_then(|v| v.as_array()) {
@@ -1496,7 +1653,10 @@ pub fn hub_section(events: &[TimelineEvent], transitions: &[Transition]) -> Stri
                     row.get("sysfs").and_then(|v| v.as_str()).unwrap_or(""),
                     row.get("adapter").and_then(|v| v.as_str()).unwrap_or("i2c"),
                 ));
-                let head = row.get("spd_page0_head").and_then(|v| v.as_str()).unwrap_or("");
+                let head = row
+                    .get("spd_page0_head")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 if !head.is_empty() {
                     let mut spaced = Vec::new();
                     let take = head.len().min(32);
@@ -1551,7 +1711,9 @@ pub fn hub_section(events: &[TimelineEvent], transitions: &[Transition]) -> Stri
                         continue;
                     }
                     let err = if errno.is_empty() {
-                        row.get("error").and_then(|v| v.as_str()).unwrap_or("failed")
+                        row.get("error")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("failed")
                     } else {
                         errno
                     };
@@ -1565,7 +1727,12 @@ pub fn hub_section(events: &[TimelineEvent], transitions: &[Transition]) -> Stri
                 }
             }
         }
-        let lines: Vec<_> = ev.dmesg_spd.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        let lines: Vec<_> = ev
+            .dmesg_spd
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
         for ln in lines.iter().take(3) {
             add(format!("{label} dmesg: `{ln}`"));
         }
@@ -1594,7 +1761,10 @@ pub fn hub_section(events: &[TimelineEvent], transitions: &[Transition]) -> Stri
     if evidence.is_empty() {
         return "No SPD5118 hub probe evidence yet. Capture as root (or via the polkit snapshot helper) so `/dev/i2c-*` can be read, or look for `spd5118: Adapter does not support 16-bit register addresses` in dmesg.".into();
     }
-    let mut lines = vec!["Evidence from this machine (corrupt captures kept even if identity later restored):".into()];
+    let mut lines = vec![
+        "Evidence from this machine (corrupt captures kept even if identity later restored):"
+            .into(),
+    ];
     lines.extend(evidence.into_iter().map(|item| format!("- {item}")));
     lines.join("\n")
 }
@@ -1603,7 +1773,11 @@ pub fn current_state(state_dir: &Path, events: &[TimelineEvent], baseline: &Base
     let (now, _) = spd_now_from_state(state_dir, events);
     let live_kb = memtotal_kb();
     let base_kb = value_as_i64(&baseline.memtotal_kb);
-    let seen = if events.iter().any(|e| e.is_alert()) { "yes" } else { "no" };
+    let seen = if events.iter().any(|e| e.is_alert()) {
+        "yes"
+    } else {
+        "no"
+    };
     let mut lines = vec![format!("- **SPD now: {now}**")];
     if live_kb != 0 && base_kb != 0 && live_kb == base_kb {
         lines.push(format!(
@@ -1634,7 +1808,10 @@ pub fn current_state(state_dir: &Path, events: &[TimelineEvent], baseline: &Base
     lines.push(format!("- Corruption seen in earlier captures: **{seen}**"));
     if now == "healthy" && seen == "yes" {
         let recover_lines = recover_status_lines(events, &now);
-        if !recover_lines.iter().any(|l| l.contains("in-band MR11 clear")) {
+        if !recover_lines
+            .iter()
+            .any(|l| l.contains("in-band MR11 clear"))
+        {
             lines.push("- Identity looks restored since the last alert (AC power loss or `am5-spd-diag fix` + reboot).".into());
         }
         lines.extend(recover_lines);
@@ -1687,10 +1864,11 @@ pub fn unit_line(name: &str) -> String {
     let enabled = systemctl_state("is-enabled", name);
     let active = systemctl_state("is-active", name);
     let mut note = String::new();
-    if name.ends_with("-pre-sleep.service") || name.ends_with("-post-sleep.service") {
-        if enabled == "enabled" && active == "inactive" {
-            note = " (oneshot; idle until sleep)".into();
-        }
+    if (name.ends_with("-pre-sleep.service") || name.ends_with("-post-sleep.service"))
+        && enabled == "enabled"
+        && active == "inactive"
+    {
+        note = " (oneshot; idle until sleep)".into();
     }
     format!("{name}: {active}, {enabled}{note}")
 }
@@ -1737,8 +1915,14 @@ pub fn build_context(_cfg: &Config, events: &[TimelineEvent], state_dir: &Path) 
 }
 
 fn report_title(dmi: &BTreeMap<String, String>, now: &str, alert_count: usize) -> String {
-    let board = dmi.get("board_name").map(String::as_str).unwrap_or("AM5 board");
-    let bios = dmi.get("bios_version").map(String::as_str).unwrap_or("unknown BIOS");
+    let board = dmi
+        .get("board_name")
+        .map(String::as_str)
+        .unwrap_or("AM5 board");
+    let bios = dmi
+        .get("bios_version")
+        .map(String::as_str)
+        .unwrap_or("unknown BIOS");
     if alert_count == 0 {
         format!("{board} BIOS {bios}: AM5 SPD identity monitor (no corruption recorded)")
     } else if now == "corrupted" {
@@ -1759,8 +1943,14 @@ fn dimm_expect_bullets(dimms: &[BTreeMap<String, String>]) -> String {
             let size = d.get("size").map(String::as_str).unwrap_or("?");
             let tw = d.get("total_width").map(String::as_str).unwrap_or("?");
             let dw = d.get("data_width").map(String::as_str).unwrap_or("?");
-            let mfr = d.get("manufacturer").map(|s| if s.is_empty() { "Unknown" } else { s.as_str() }).unwrap_or("Unknown");
-            let part = d.get("part").map(|s| if s.is_empty() { "empty" } else { s.as_str() }).unwrap_or("empty");
+            let mfr = d
+                .get("manufacturer")
+                .map(|s| if s.is_empty() { "Unknown" } else { s.as_str() })
+                .unwrap_or("Unknown");
+            let part = d
+                .get("part")
+                .map(|s| if s.is_empty() { "empty" } else { s.as_str() })
+                .unwrap_or("empty");
             let speed = d.get("speed").map(String::as_str).unwrap_or("");
             let serial = d.get("serial").map(String::as_str).unwrap_or("?");
             format!("  - **{loc}:** {size} · {tw}/{dw} · {mfr} {part} · {speed} · serial {serial}")
@@ -1795,7 +1985,11 @@ fn expected_actual_section(
     } else {
         current_dimms
     };
-    let slot = slot_map_line(if expected_dimms.is_empty() { current_dimms } else { expected_dimms });
+    let slot = slot_map_line(if expected_dimms.is_empty() {
+        current_dimms
+    } else {
+        expected_dimms
+    });
     format!(
         "- **Slot map:** {slot}\n- **Expected** firmware MemTotal {base_kb} kB ({}):\n{}\n- **Actual** firmware MemTotal {} kB ({}) (live now {live_kb} kB / {}):\n{}\n- **Impact:** firmware published placeholder DIMM identity and a smaller memory map. Linux is reflecting SMBIOS/e820 from UEFI, not dropping RAM in the MM layer.",
         kb_to_gib(base_kb),
@@ -1835,7 +2029,10 @@ fn e820_lines(ev: Option<&TimelineEvent>) -> Vec<String> {
 }
 
 fn e820_high_end(lines: &[String]) -> String {
-    let ram: Vec<_> = lines.iter().filter(|ln| ln.contains("System RAM")).collect();
+    let ram: Vec<_> = lines
+        .iter()
+        .filter(|ln| ln.contains("System RAM"))
+        .collect();
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"(?i)\[mem 0x[0-9a-f]+-(0x[0-9a-f]+)\]").unwrap());
     for ln in ram.iter().rev() {
@@ -1970,13 +2167,20 @@ fn attachment_checklist(
         lines.push("- `spd-page0-*.txt`: missing".into());
     } else {
         for path in pages {
-            lines.push(format!("- `{}`: present", path.file_name().unwrap().to_string_lossy()));
+            lines.push(format!(
+                "- `{}`: present",
+                path.file_name().unwrap().to_string_lossy()
+            ));
         }
     }
     lines.join("\n")
 }
 
-pub fn mapping_from_context(cfg: &Config, events: &[TimelineEvent], ctx: &Context) -> BTreeMap<String, String> {
+pub fn mapping_from_context(
+    cfg: &Config,
+    events: &[TimelineEvent],
+    ctx: &Context,
+) -> BTreeMap<String, String> {
     let live_kb = memtotal_kb();
     let now = ctx.spd_now.as_str();
     let recovs = recover_events(events);
@@ -1986,9 +2190,9 @@ pub fn mapping_from_context(cfg: &Config, events: &[TimelineEvent], ctx: &Contex
         .find(|e| e.event == "boot")
         .map(|e| e.boot_id.as_str())
         .unwrap_or("");
-    let recover_pending = recovs.iter().any(|e| {
-        recover_cleared(e) && (this_boot_id.is_empty() || e.boot_id == this_boot_id)
-    });
+    let recover_pending = recovs
+        .iter()
+        .any(|e| recover_cleared(e) && (this_boot_id.is_empty() || e.boot_id == this_boot_id));
     let summary = if ctx.alert_count == 0 {
         "Monitor is installed. No SPD identity corruption has been recorded yet. Use the system normally (sleep/wake, then reboot) and re-run `am5-spd-diag report`.".into()
     } else if now == "corrupted" {
@@ -2007,7 +2211,12 @@ pub fn mapping_from_context(cfg: &Config, events: &[TimelineEvent], ctx: &Contex
     } else {
         pick_dimms(ctx.last_healthy.as_ref())
     };
-    let current_dimms = pick_dimms(ctx.latest.as_ref().or(ctx.last_alert.as_ref()).or(ctx.last_healthy.as_ref()));
+    let current_dimms = pick_dimms(
+        ctx.latest
+            .as_ref()
+            .or(ctx.last_alert.as_ref())
+            .or(ctx.last_healthy.as_ref()),
+    );
     let corrupt_dimms = pick_dimms(ctx.last_alert.as_ref());
     let system = collect_system_info();
     let attach = attachment_checklist(ctx.last_alert.as_ref(), ctx.latest.as_ref(), &ctx.state_dir);
@@ -2034,13 +2243,27 @@ pub fn mapping_from_context(cfg: &Config, events: &[TimelineEvent], ctx: &Contex
         ),
         (
             "HARDWARE_TABLE".into(),
-            hardware_table(cfg, &ctx.dmi, &live_cpu(), &live_os(), &live_kernel(), &ctx.baseline, &system),
+            hardware_table(
+                cfg,
+                &ctx.dmi,
+                &live_cpu(),
+                &live_os(),
+                &live_kernel(),
+                &ctx.baseline,
+                &system,
+            ),
         ),
-        ("SYSTEM_CAPTURED".into(), captured_system_table(events, &system)),
+        (
+            "SYSTEM_CAPTURED".into(),
+            captured_system_table(events, &system),
+        ),
         (
             "BIOS_VERSION".into(),
             first_nonempty(&[
-                ctx.dmi.get("bios_version").map(String::as_str).unwrap_or(""),
+                ctx.dmi
+                    .get("bios_version")
+                    .map(String::as_str)
+                    .unwrap_or(""),
                 cfg.get("FALLBACK_BIOS"),
                 "unknown",
             ]),
@@ -2054,7 +2277,11 @@ pub fn mapping_from_context(cfg: &Config, events: &[TimelineEvent], ctx: &Contex
         ("HUB_SECTION".into(), hub_section(events, &ctx.transitions)),
         (
             "E820_SECTION".into(),
-            e820_section(ctx.last_alert.as_ref(), ctx.last_healthy.as_ref(), &ctx.baseline),
+            e820_section(
+                ctx.last_alert.as_ref(),
+                ctx.last_healthy.as_ref(),
+                &ctx.baseline,
+            ),
         ),
         (
             "DIMM_SECTION".into(),
@@ -2079,7 +2306,11 @@ pub fn mapping_from_context(cfg: &Config, events: &[TimelineEvent], ctx: &Contex
         ("MEM_SLEEP".into(), mem_sleep()),
         (
             "OS_RELEASE".into(),
-            if live_os().is_empty() { "unknown".into() } else { live_os() },
+            if live_os().is_empty() {
+                "unknown".into()
+            } else {
+                live_os()
+            },
         ),
         ("KERNEL".into(), live_kernel()),
         ("ATTACHMENTS".into(), attach),
@@ -2198,7 +2429,12 @@ pub fn format_analyze(events: &[TimelineEvent], ctx: &Context) -> String {
     writeln!(out).ok();
     writeln!(out, "## SPD5118 hub").ok();
     writeln!(out).ok();
-    writeln!(out, "{}", strip_md_italics(&hub_section(events, &ctx.transitions))).ok();
+    writeln!(
+        out,
+        "{}",
+        strip_md_italics(&hub_section(events, &ctx.transitions))
+    )
+    .ok();
     writeln!(out).ok();
     writeln!(out, "For a ticket: am5-spd-diag report").ok();
     out
@@ -2222,8 +2458,12 @@ fn dimm_status_lines(dimms: &[BTreeMap<String, String>], now: &str) -> Vec<Strin
                     "  {}: {} {} {} width {}/{}",
                     d.get("locator").map(String::as_str).unwrap_or("?"),
                     d.get("size").map(String::as_str).unwrap_or("?"),
-                    d.get("manufacturer").map(|s| if s.is_empty() { "Unknown" } else { s }).unwrap_or("Unknown"),
-                    d.get("part").map(|s| if s.is_empty() { "empty" } else { s }).unwrap_or("empty"),
+                    d.get("manufacturer")
+                        .map(|s| if s.is_empty() { "Unknown" } else { s })
+                        .unwrap_or("Unknown"),
+                    d.get("part")
+                        .map(|s| if s.is_empty() { "empty" } else { s })
+                        .unwrap_or("empty"),
                     d.get("total_width").map(String::as_str).unwrap_or("?"),
                     d.get("data_width").map(String::as_str).unwrap_or("?"),
                 )
@@ -2246,13 +2486,24 @@ pub fn format_status(events: &[TimelineEvent], ctx: &Context) -> String {
     };
     let mut out = String::new();
     writeln!(out, "SPD now: {now}").ok();
-    writeln!(out, "System: {}", system_oneliner(&ctx.dmi, &live_cpu(), &live_kernel(), None)).ok();
+    writeln!(
+        out,
+        "System: {}",
+        system_oneliner(&ctx.dmi, &live_cpu(), &live_kernel(), None)
+    )
+    .ok();
     for line in dimm_status_lines(&dimms, now) {
         writeln!(out, " · {}", line.trim()).ok();
     }
-    let mut ram = format!("Firmware published RAM: {live_kb} kB ({})", kb_to_gib(live_kb));
+    let mut ram = format!(
+        "Firmware published RAM: {live_kb} kB ({})",
+        kb_to_gib(live_kb)
+    );
     if base_kb != 0 {
-        ram.push_str(&format!("; healthy baseline {base_kb} kB ({})", kb_to_gib(base_kb)));
+        ram.push_str(&format!(
+            "; healthy baseline {base_kb} kB ({})",
+            kb_to_gib(base_kb)
+        ));
     }
     writeln!(out, "{ram}").ok();
     writeln!(out, "Sleep policy: {}", mem_sleep()).ok();
@@ -2276,7 +2527,11 @@ pub fn format_status(events: &[TimelineEvent], ctx: &Context) -> String {
     writeln!(
         out,
         "  sleep hook: {}",
-        if hook.is_file() { "installed" } else { "missing" }
+        if hook.is_file() {
+            "installed"
+        } else {
+            "missing"
+        }
     )
     .ok();
     let notice = ctx.state_dir.join("NOTICE");
@@ -2300,20 +2555,7 @@ pub fn print_status(events: &[TimelineEvent], ctx: &Context) {
 }
 
 fn user_artifact_dir(subdir: &str) -> PathBuf {
-    if let Ok(xdg) = env::var("XDG_DATA_HOME") {
-        if !xdg.is_empty() {
-            return PathBuf::from(xdg).join("am5-spd-diag").join(subdir);
-        }
-    }
-    let mut home = PathBuf::from(env::var("HOME").unwrap_or_else(|_| "/".into()));
-    if let Ok(sudo_user) = env::var("SUDO_USER") {
-        if sudo_user != "root" {
-            if let Some(dir) = home_for_user(&sudo_user) {
-                home = dir;
-            }
-        }
-    }
-    home.join(".local/share/am5-spd-diag").join(subdir)
+    crate::paths::user_data_dir().join(subdir)
 }
 
 fn dir_is_writable(dir: &Path) -> bool {
@@ -2381,17 +2623,12 @@ fn staging_tempdir(prefix: &str) -> Result<tempfile::TempDir, String> {
     Err(format!("tempdir: {last}"))
 }
 
-fn home_for_user(name: &str) -> Option<PathBuf> {
-    let c = std::ffi::CString::new(name).ok()?;
-    let pwd = unsafe { libc::getpwnam(c.as_ptr()) };
-    if pwd.is_null() {
-        return None;
-    }
-    let dir = unsafe { std::ffi::CStr::from_ptr((*pwd).pw_dir) };
-    Some(PathBuf::from(dir.to_string_lossy().as_ref()))
-}
-
-pub fn render_report(prefix: &Path, events: &[TimelineEvent], ctx: &Context, cfg: &Config) -> String {
+pub fn render_report(
+    prefix: &Path,
+    events: &[TimelineEvent],
+    ctx: &Context,
+    cfg: &Config,
+) -> String {
     let share = env::var("AM5_SPD_DIAG_SHARE")
         .map(PathBuf::from)
         .unwrap_or_else(|_| prefix.to_path_buf());
@@ -2503,8 +2740,20 @@ pub fn make_package(
     let tmp = staging_tempdir("am5-spd-diag-pkg-")?;
     let root = tmp.path().join(&name);
     fs::create_dir(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
-    let _ = write_report(prefix, state_dir, cfg, events, ctx, Some(root.join("report.md")));
-    for fname in ["timeline.jsonl", "ALERTS.log", "baseline.json", "baseline.txt"] {
+    let _ = write_report(
+        prefix,
+        state_dir,
+        cfg,
+        events,
+        ctx,
+        Some(root.join("report.md")),
+    );
+    for fname in [
+        "timeline.jsonl",
+        "ALERTS.log",
+        "baseline.json",
+        "baseline.txt",
+    ] {
         let src = state_dir.join(fname);
         if src.is_file() {
             let _ = fs::copy(&src, root.join(fname));
@@ -2529,10 +2778,13 @@ pub fn make_package(
     });
     let _ = fs::write(
         root.join("manifest.json"),
-        format!("{}\n", serde_json::to_string_pretty(&manifest).unwrap_or_default()),
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(&manifest).unwrap_or_default()
+        ),
     );
-    let tar_file = fs::File::create(&tar_path)
-        .map_err(|e| format!("create {}: {e}", tar_path.display()))?;
+    let tar_file =
+        fs::File::create(&tar_path).map_err(|e| format!("create {}: {e}", tar_path.display()))?;
     let enc = flate2::write::GzEncoder::new(tar_file, flate2::Compression::default());
     let mut tar = tar::Builder::new(enc);
     tar.follow_symlinks(false);
@@ -2558,7 +2810,10 @@ fn copy_dir_all(src: &Path, dest: &Path) {
 }
 
 pub fn print_inventory() {
-    println!("{}", serde_json::to_string_pretty(&collect_system_info()).unwrap_or_else(|_| "{}".into()));
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&collect_system_info()).unwrap_or_else(|_| "{}".into())
+    );
 }
 
 #[cfg(test)]
@@ -2618,7 +2873,9 @@ mod tests {
             ev("boot", "a", true, "t3"),
         ];
         events[1].mem_sleep = "s2idle [deep]".into();
-        events[1].meta.insert("mem_sleep".into(), "s2idle [deep]".into());
+        events[1]
+            .meta
+            .insert("mem_sleep".into(), "s2idle [deep]".into());
         events[2].flags = "unknown_part".into();
         events[2].dimms = vec![corrupt_dimm()];
         events[2].hub = stuck_hub();
@@ -2652,7 +2909,8 @@ mod tests {
         let mut alert = ev("boot", "b", true, "t-alert");
         alert.dimms = vec![corrupt_dimm()];
         alert.hub = stuck_hub();
-        alert.dmesg_spd = "spd5118 1-0053: Adapter does not support 16-bit register addresses".into();
+        alert.dmesg_spd =
+            "spd5118 1-0053: Adapter does not support 16-bit register addresses".into();
         let mut latest = ev("boot", "c", false, "t-healthy");
         latest.hub = json!({"stuck": [], "dmesg_stuck": []});
         let trans = find_transitions(&[alert.clone()]);
@@ -2665,8 +2923,14 @@ mod tests {
     #[test]
     fn slot_map() {
         let dimms = vec![
-            BTreeMap::from([("locator".into(), "DIMMA2".into()), ("size".into(), "16 GiB".into())]),
-            BTreeMap::from([("locator".into(), "DIMMB2".into()), ("size".into(), "16 GiB".into())]),
+            BTreeMap::from([
+                ("locator".into(), "DIMMA2".into()),
+                ("size".into(), "16 GiB".into()),
+            ]),
+            BTreeMap::from([
+                ("locator".into(), "DIMMB2".into()),
+                ("size".into(), "16 GiB".into()),
+            ]),
         ];
         assert_eq!(slot_map_line(&dimms), "2×16 GiB in DIMMA2+DIMMB2");
     }
@@ -2687,8 +2951,10 @@ mod tests {
             "BIOS-e820: [mem 0x0000000100000000-0x00000004dde7ffff] System RAM\n",
         )
         .into();
-        let mut baseline = Baseline::default();
-        baseline.memtotal_kb = json!(32250768);
+        let baseline = Baseline {
+            memtotal_kb: json!(32250768),
+            ..Default::default()
+        };
         let text = e820_section(Some(&alert), Some(&healthy), &baseline);
         assert!(text.contains("0x000000085de7ffff"));
         assert!(text.contains("0x00000004dde7ffff"));
@@ -2705,14 +2971,22 @@ mod tests {
             ev("boot", "b", false, "t2"),
         ];
         assert_eq!(infer_boot_kind(&events, 2), "unexpected_power_loss");
-        assert_eq!(boot_kind_from_previous_event("manual"), "unexpected_power_loss");
+        assert_eq!(
+            boot_kind_from_previous_event("manual"),
+            "unexpected_power_loss"
+        );
         assert_eq!(boot_kind_from_previous_event("reboot"), "warm_reboot");
         assert_eq!(boot_kind_from_previous_event("recover"), "warm_reboot");
-        assert_eq!(boot_kind_from_previous_event("poweroff"), "shutdown_poweroff");
+        assert_eq!(
+            boot_kind_from_previous_event("poweroff"),
+            "shutdown_poweroff"
+        );
         let text = render_boot_timeline(&group_boots(&events));
         assert!(text.contains("unexpected_power_loss"));
-        let mut baseline = Baseline::default();
-        baseline.memtotal_kb = json!(32000000);
+        let baseline = Baseline {
+            memtotal_kb: json!(32000000),
+            ..Default::default()
+        };
         let state = current_state(Path::new("/nonexistent"), &events, &baseline);
         assert!(state.contains("unexpected power loss"));
     }

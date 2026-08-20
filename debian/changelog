@@ -1,5 +1,17 @@
 am5-spd-diag (1.0.0-1) unstable; urgency=medium
 
+  * Make /var/log/am5-spd-diag 0755 root:root and write capture state with
+    O_NOFOLLOW so a local user cannot symlink-swap passwordless snapshot
+    into a root file write.
+  * Recursively restore leftover files in that tree to root:root via
+    tmpfiles Z. Purge wipes /var/log/am5-spd-diag with systemd-tmpfiles
+    --remove on a snippet kept out of tmpfiles.d (so boot does not empty
+    logs), then removes user XDG data so a failed sudo leaves reports in
+    place. Ignore AM5_SPD_DIAG_STATE_DIR after sudo. The log tree stays
+    world-readable so users can inspect captures without root; package still
+    copies evidence into a tarball they own.
+  * Return a real exit status from capture so report/package refuse stale
+    evidence; systemd boot/sleep units stay best-effort.
   * First stable release (Rust rewrite of the Python/bash tool).
   * Show Ghost DIMM as the desktop notice sender (keep the D-Bus app id).
   * Rename the in-band command to fix; keep recover as an alias. CLI fix
@@ -29,4 +41,4 @@ am5-spd-diag (1.0.0-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Wed, 19 Aug 2026 09:41:02 +0000
+ -- Fritz <code@fritztech.net>  Wed, 19 Aug 2026 12:30:00 +0000

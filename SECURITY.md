@@ -4,4 +4,6 @@ Please report vulnerabilities privately through [GitHub Security Advisories](htt
 
 This tool reads SPD5118 hubs over I²C. Snapshot, probe, and fix helpers run privileged. `fix` writes MR11 only when it already reads `0x08`; it does not rewrite EEPROM. Treat unexpected privilege prompts as untrusted.
 
+Captures under `/var/log/am5-spd-diag/` are world-readable (board and DIMM serials included) and root-owned. Local users can inspect them; they cannot write that tree. `package` puts a copy in a tarball you own.
+
 Vendor tickets from this tool include board and DIMM serials and omit system UUID and asset tags. Keep extra machine identifiers out of public reports when you can.

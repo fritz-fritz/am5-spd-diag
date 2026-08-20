@@ -1,4 +1,20 @@
 -------------------------------------------------------------------
+Wed Aug 19 12:30:00 UTC 2026 - Fritz <code@fritztech.net>
+
+- Make /var/log/am5-spd-diag 0755 root:root and write capture state
+  with O_NOFOLLOW so a local user cannot symlink-swap passwordless
+  snapshot into a root file write.
+- Recursively restore leftover files in that tree to root:root via
+  tmpfiles Z. Purge wipes /var/log/am5-spd-diag with systemd-tmpfiles
+  --remove on a snippet kept out of tmpfiles.d (so boot does not
+  empty logs), then removes user XDG data so a failed sudo leaves
+  reports in place. Ignore AM5_SPD_DIAG_STATE_DIR after sudo.
+  The log tree stays world-readable so users can inspect captures
+  without root; package still copies evidence into a tarball they own.
+- Return a real exit status from capture so report/package refuse
+  stale evidence; systemd boot/sleep units stay best-effort.
+
+-------------------------------------------------------------------
 Wed Aug 19 09:41:02 UTC 2026 - Fritz <code@fritztech.net>
 
 - First stable release (Rust rewrite of the Python/bash tool).

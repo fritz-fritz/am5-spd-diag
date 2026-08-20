@@ -10,8 +10,8 @@ Conflicts=shutdown.target reboot.target halt.target poweroff.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/am5-spd-diag capture boot
-ExecStop=/usr/bin/am5-spd-diag capture shutdown
+ExecStart=-/usr/bin/am5-spd-diag capture boot
+ExecStop=-/usr/bin/am5-spd-diag capture shutdown
 TimeoutStartSec=30
 TimeoutStopSec=30
 

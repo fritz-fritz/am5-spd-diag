@@ -40,7 +40,9 @@ pub fn parse_conf(path: &Path) -> BTreeMap<String, String> {
         };
         cfg.insert(
             key.trim().to_string(),
-            val.trim().trim_matches(|c| c == '\'' || c == '"').to_string(),
+            val.trim()
+                .trim_matches(|c| c == '\'' || c == '"')
+                .to_string(),
         );
     }
     cfg
@@ -59,8 +61,13 @@ pub fn load_config(prefix: &Path) -> Config {
         ("KEEP_DAYS".into(), "60".into()),
         ("CAPTURE_TIMEOUT_SEC".into(), "20".into()),
     ]);
-    let share = env::var("AM5_SPD_DIAG_SHARE").map(PathBuf::from).unwrap_or_else(|_| prefix.to_path_buf());
-    for path in [share.join("config/default.conf"), PathBuf::from("/etc/am5-spd-diag.conf")] {
+    let share = env::var("AM5_SPD_DIAG_SHARE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| prefix.to_path_buf());
+    for path in [
+        share.join("config/default.conf"),
+        PathBuf::from("/etc/am5-spd-diag.conf"),
+    ] {
         values.extend(parse_conf(&path));
     }
     if let Ok(state) = env::var("AM5_SPD_DIAG_STATE_DIR") {

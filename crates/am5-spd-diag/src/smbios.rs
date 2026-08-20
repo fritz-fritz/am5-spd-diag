@@ -1,4 +1,5 @@
 use crate::dimm::parse_dmidecode_memory;
+use crate::safe_fs::{ensure_dir, write_nofollow};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -136,8 +137,12 @@ fn format_size(formatted: &[u8]) -> String {
     } else {
         (code as u64 & 0x7FFF) * 1024 * 1024
     };
-    for (unit, step) in [("GiB", 1024u64.pow(3)), ("MiB", 1024u64.pow(2)), ("KiB", 1024)] {
-        if nbytes >= step && nbytes % step == 0 {
+    for (unit, step) in [
+        ("GiB", 1024u64.pow(3)),
+        ("MiB", 1024u64.pow(2)),
+        ("KiB", 1024),
+    ] {
+        if nbytes >= step && nbytes.is_multiple_of(step) {
             return format!("{} {unit}", nbytes / step);
         }
     }
@@ -175,7 +180,12 @@ fn format_mfg_id(code: u16) -> String {
     }
 }
 
-const FORM_FACTORS: [(u8, &str); 4] = [(0x08, "RIMM"), (0x09, "DIMM"), (0x0D, "SODIMM"), (0x0F, "FB-DIMM")];
+const FORM_FACTORS: [(u8, &str); 4] = [
+    (0x08, "RIMM"),
+    (0x09, "DIMM"),
+    (0x0D, "SODIMM"),
+    (0x0F, "FB-DIMM"),
+];
 const MEMORY_TYPES: [(u8, &str); 6] = [
     (0x18, "DDR3"),
     (0x1A, "DDR3"),
@@ -189,7 +199,7 @@ fn format_voltage_mv(code: u16) -> String {
     if code == 0 || code == 0xFFFF {
         return String::new();
     }
-    if code % 1000 == 0 {
+    if code.is_multiple_of(1000) {
         format!("{} V", code / 1000)
     } else {
         let s = format!("{:.1} V", code as f64 / 1000.0);
@@ -219,11 +229,25 @@ pub fn type17_display_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<S
     fields.insert("Size".into(), format_size(formatted));
     fields.insert(
         "Locator".into(),
-        smbios_string(strings, if formatted.len() > 0x10 { formatted[0x10] } else { 0 }),
+        smbios_string(
+            strings,
+            if formatted.len() > 0x10 {
+                formatted[0x10]
+            } else {
+                0
+            },
+        ),
     );
     fields.insert(
         "Bank Locator".into(),
-        smbios_string(strings, if formatted.len() > 0x11 { formatted[0x11] } else { 0 }),
+        smbios_string(
+            strings,
+            if formatted.len() > 0x11 {
+                formatted[0x11]
+            } else {
+                0
+            },
+        ),
     );
     if empty {
         return fields;
@@ -239,13 +263,22 @@ pub fn type17_display_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<S
         }
     }
     if formatted.len() > 0x17 {
-        fields.insert("Manufacturer".into(), smbios_string(strings, formatted[0x17]));
+        fields.insert(
+            "Manufacturer".into(),
+            smbios_string(strings, formatted[0x17]),
+        );
     }
     if formatted.len() > 0x18 {
-        fields.insert("Serial Number".into(), smbios_string(strings, formatted[0x18]));
+        fields.insert(
+            "Serial Number".into(),
+            smbios_string(strings, formatted[0x18]),
+        );
     }
     if formatted.len() > 0x1A {
-        fields.insert("Part Number".into(), smbios_string(strings, formatted[0x1A]));
+        fields.insert(
+            "Part Number".into(),
+            smbios_string(strings, formatted[0x1A]),
+        );
     }
     if formatted.len() > 0x1B {
         let rank = formatted[0x1B] & 0x0F;
@@ -272,7 +305,14 @@ pub fn type17_display_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<S
     fields
 }
 
-fn dump_fields(lines: &mut Vec<String>, handle: u16, typ: u8, formatted: &[u8], title: &str, fields: &BTreeMap<String, String>) {
+fn dump_fields(
+    lines: &mut Vec<String>,
+    handle: u16,
+    typ: u8,
+    formatted: &[u8],
+    title: &str,
+    fields: &BTreeMap<String, String>,
+) {
     lines.push(String::new());
     lines.push(format!(
         "Handle 0x{handle:04X}, DMI type {typ}, {} bytes",
@@ -360,7 +400,10 @@ pub fn looks_like_text_dump(data: &[u8]) -> bool {
     if stripped[0] < 32 && !matches!(stripped[0], 9 | 10 | 13) {
         return false;
     }
-    !stripped.get(..64.min(stripped.len())).unwrap_or(stripped).contains(&0)
+    !stripped
+        .get(..64.min(stripped.len()))
+        .unwrap_or(stripped)
+        .contains(&0)
 }
 
 pub fn parse_memory_devices(data: &[u8]) -> Vec<BTreeMap<String, String>> {
@@ -455,7 +498,10 @@ pub fn redact_dmi_secrets(text: &str) -> String {
     let mut lines = Vec::new();
     for line in text.lines() {
         let stripped = line.trim_start();
-        let key = stripped.split_once(':').map(|(k, _)| k.trim().to_ascii_lowercase()).unwrap_or_default();
+        let key = stripped
+            .split_once(':')
+            .map(|(k, _)| k.trim().to_ascii_lowercase())
+            .unwrap_or_default();
         if key == "uuid" || key == "asset tag" {
             let indent_len = line.len() - stripped.len();
             let indent = &line[..indent_len];
@@ -487,7 +533,10 @@ fn type0_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<String, String
         fields.insert("Version".into(), smbios_string(strings, formatted[0x05]));
     }
     if formatted.len() > 0x08 {
-        fields.insert("Release Date".into(), smbios_string(strings, formatted[0x08]));
+        fields.insert(
+            "Release Date".into(),
+            smbios_string(strings, formatted[0x08]),
+        );
     }
     if formatted.len() >= 0x18 {
         if formatted[0x14] != 0xFF && formatted[0x15] != 0xFF {
@@ -509,8 +558,14 @@ fn type0_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<String, String
 fn type1_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<String, String> {
     let mut fields = BTreeMap::new();
     if formatted.len() > 0x06 {
-        fields.insert("Manufacturer".into(), smbios_string(strings, formatted[0x04]));
-        fields.insert("Product Name".into(), smbios_string(strings, formatted[0x05]));
+        fields.insert(
+            "Manufacturer".into(),
+            smbios_string(strings, formatted[0x04]),
+        );
+        fields.insert(
+            "Product Name".into(),
+            smbios_string(strings, formatted[0x05]),
+        );
         fields.insert("Version".into(), smbios_string(strings, formatted[0x06]));
     }
     if formatted.len() > 0x1A {
@@ -523,8 +578,14 @@ fn type1_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<String, String
 fn type2_fields(formatted: &[u8], strings: &[String]) -> BTreeMap<String, String> {
     let mut fields = BTreeMap::new();
     if formatted.len() > 0x06 {
-        fields.insert("Manufacturer".into(), smbios_string(strings, formatted[0x04]));
-        fields.insert("Product Name".into(), smbios_string(strings, formatted[0x05]));
+        fields.insert(
+            "Manufacturer".into(),
+            smbios_string(strings, formatted[0x04]),
+        );
+        fields.insert(
+            "Product Name".into(),
+            smbios_string(strings, formatted[0x05]),
+        );
         fields.insert("Version".into(), smbios_string(strings, formatted[0x06]));
     }
     if formatted.len() > 0x07 {
@@ -555,8 +616,14 @@ fn type4_fields(formatted: &[u8], strings: &[String]) -> Option<BTreeMap<String,
         return None;
     }
     Some(BTreeMap::from([
-        ("Socket Designation".into(), smbios_string(strings, formatted[0x04])),
-        ("Manufacturer".into(), smbios_string(strings, formatted[0x07])),
+        (
+            "Socket Designation".into(),
+            smbios_string(strings, formatted[0x04]),
+        ),
+        (
+            "Manufacturer".into(),
+            smbios_string(strings, formatted[0x07]),
+        ),
         ("Version".into(), smbios_string(strings, formatted[0x10])),
         ("Max Speed".into(), mhz(u16_at(formatted, 0x14))),
         ("Current Speed".into(), mhz(u16_at(formatted, 0x16))),
@@ -572,9 +639,18 @@ pub fn format_smbios_system_dump(blob: &[u8], source: &str) -> String {
     let mut found = false;
     for st in iter_smbios_structures(blob) {
         let (title, fields) = match st.typ {
-            0 => ("BIOS Information", Some(type0_fields(&st.formatted, &st.strings))),
-            1 => ("System Information", Some(type1_fields(&st.formatted, &st.strings))),
-            2 => ("Base Board Information", Some(type2_fields(&st.formatted, &st.strings))),
+            0 => (
+                "BIOS Information",
+                Some(type0_fields(&st.formatted, &st.strings)),
+            ),
+            1 => (
+                "System Information",
+                Some(type1_fields(&st.formatted, &st.strings)),
+            ),
+            2 => (
+                "Base Board Information",
+                Some(type2_fields(&st.formatted, &st.strings)),
+            ),
             4 => (
                 "Processor Information",
                 type4_fields(&st.formatted, &st.strings),
@@ -601,7 +677,16 @@ pub fn format_smbios_system_dump(blob: &[u8], source: &str) -> String {
 
 fn dump_system_from_dmidecode() -> Option<String> {
     let out = Command::new("dmidecode")
-        .args(["-t", "bios", "-t", "system", "-t", "baseboard", "-t", "processor"])
+        .args([
+            "-t",
+            "bios",
+            "-t",
+            "system",
+            "-t",
+            "baseboard",
+            "-t",
+            "processor",
+        ])
         .stderr(std::process::Stdio::null())
         .output()
         .ok()?;
@@ -620,7 +705,10 @@ pub fn collect_system_dump(table: Option<&Path>, allow_dmidecode: bool) -> (Stri
     if let Some(table) = table {
         let data = std::fs::read(table).unwrap_or_default();
         if looks_like_text_dump(&data) {
-            return (redact_dmi_secrets(&String::from_utf8_lossy(&data)), "file".into());
+            return (
+                redact_dmi_secrets(&String::from_utf8_lossy(&data)),
+                "file".into(),
+            );
         }
         return (
             format_smbios_system_dump(&data, &table.display().to_string()),
@@ -659,7 +747,7 @@ pub fn format_spd_page0_text(sysfs: &str, data: &[u8]) -> String {
 
 pub fn write_spd_page0_files(directory: &Path, probe: &serde_json::Value) -> Vec<PathBuf> {
     let mut written = Vec::new();
-    let _ = std::fs::create_dir_all(directory);
+    let _ = ensure_dir(directory);
     let Some(stuck) = probe.get("stuck").and_then(|v| v.as_array()) else {
         return written;
     };
@@ -675,7 +763,7 @@ pub fn write_spd_page0_files(directory: &Path, probe: &serde_json::Value) -> Vec
         }
         let Ok(data) = hex_decode(hx) else { continue };
         let path = directory.join(format!("spd-page0-{sysfs}.txt"));
-        if std::fs::write(&path, format_spd_page0_text(&sysfs, &data)).is_ok() {
+        if write_nofollow(&path, format_spd_page0_text(&sysfs, &data)).is_ok() {
             written.push(path);
         }
     }
@@ -684,7 +772,7 @@ pub fn write_spd_page0_files(directory: &Path, probe: &serde_json::Value) -> Vec
 
 fn hex_decode(s: &str) -> Result<Vec<u8>, ()> {
     let s = s.trim();
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(());
     }
     (0..s.len())
@@ -698,6 +786,7 @@ mod tests {
     use super::*;
     use crate::dimm::{dimm_flags, format_dimm_summary, parse_dmidecode_memory};
 
+    #[allow(clippy::too_many_arguments)]
     fn pack_type17(
         handle: u16,
         empty: bool,
@@ -788,16 +877,46 @@ mod tests {
     #[test]
     fn sysfs_style_blob() {
         let mut blob = pack_type17(
-            0x000E, true, 16384, 0xFFFF, 0xFFFF, "DIMMA1", "P0 CHANNEL A", "Unknown",
-            "B5066693", "CMH32GX5M2M6000Z36", 6000, 0x9E02,
+            0x000E,
+            true,
+            16384,
+            0xFFFF,
+            0xFFFF,
+            "DIMMA1",
+            "P0 CHANNEL A",
+            "Unknown",
+            "B5066693",
+            "CMH32GX5M2M6000Z36",
+            6000,
+            0x9E02,
         );
         blob.extend(pack_type17(
-            0x0010, false, 16384, 64, 64, "DIMMA2", "P0 CHANNEL A", "Unknown",
-            "B5066693", "CMH32GX5M2M6000Z36", 6000, 0x9E02,
+            0x0010,
+            false,
+            16384,
+            64,
+            64,
+            "DIMMA2",
+            "P0 CHANNEL A",
+            "Unknown",
+            "B5066693",
+            "CMH32GX5M2M6000Z36",
+            6000,
+            0x9E02,
         ));
         blob.extend(pack_type17(
-            0x0015, false, 16384, 64, 64, "DIMMB2", "P0 CHANNEL B", "Unknown",
-            "B506743D", "CMH32GX5M2M6000Z36", 6000, 0x9E02,
+            0x0015,
+            false,
+            16384,
+            64,
+            64,
+            "DIMMB2",
+            "P0 CHANNEL B",
+            "Unknown",
+            "B506743D",
+            "CMH32GX5M2M6000Z36",
+            6000,
+            0x9E02,
         ));
         blob.extend(pack_end());
         let dump = format_smbios_memory_dump(&blob, "test");
@@ -823,8 +942,18 @@ mod tests {
     #[test]
     fn corrupt_blob() {
         let blob = pack_type17(
-            0x0015, false, 2048, 8, 8, "DIMMB2", "P0 CHANNEL A", "Unknown",
-            "00206200", "Unknown", 6000, 0,
+            0x0015,
+            false,
+            2048,
+            8,
+            8,
+            "DIMMB2",
+            "P0 CHANNEL A",
+            "Unknown",
+            "00206200",
+            "Unknown",
+            6000,
+            0,
         );
         let dimms = parse_smbios_memory(&blob);
         assert_eq!(dimms.len(), 1);
@@ -837,8 +966,18 @@ mod tests {
     #[test]
     fn extended_size() {
         let mut buf = pack_type17(
-            0x0010, false, 1, 64, 64, "DIMMA2", "P0 CHANNEL A", "Unknown",
-            "B5066693", "CMH32GX5M2M6000Z36", 6000, 0x9E02,
+            0x0010,
+            false,
+            1,
+            64,
+            64,
+            "DIMMA2",
+            "P0 CHANNEL A",
+            "Unknown",
+            "B5066693",
+            "CMH32GX5M2M6000Z36",
+            6000,
+            0x9E02,
         );
         buf[0x0C..0x0E].copy_from_slice(&0x7FFFu16.to_le_bytes());
         buf[0x1C..0x20].copy_from_slice(&32768u32.to_le_bytes());
@@ -849,8 +988,18 @@ mod tests {
     #[test]
     fn dump_memory_cli_table() {
         let mut blob = pack_type17(
-            0x0010, false, 16384, 64, 64, "DIMMA2", "P0 CHANNEL A", "Unknown",
-            "B5066693", "CMH32GX5M2M6000Z36", 6000, 0x9E02,
+            0x0010,
+            false,
+            16384,
+            64,
+            64,
+            "DIMMA2",
+            "P0 CHANNEL A",
+            "Unknown",
+            "B5066693",
+            "CMH32GX5M2M6000Z36",
+            6000,
+            0x9E02,
         );
         blob.extend(pack_end());
         let dir = std::env::temp_dir();

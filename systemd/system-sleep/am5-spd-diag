@@ -3,6 +3,12 @@
 # am5-spd-diag-pre-sleep.service / am5-spd-diag-post-sleep.service.
 set -u
 LOG=/var/log/am5-spd-diag/hook.log
+# Directory is 0755 root:root. Refuse a planted symlink (O_NOFOLLOW is not
+# available from portable shell append redirection).
+umask 022
 mkdir -p /var/log/am5-spd-diag 2>/dev/null || true
+if [ -L "$LOG" ]; then
+	exit 0
+fi
 echo "$(date -Is) systemd-sleep $1 ${2:-}" >>"$LOG" 2>/dev/null || true
 exit 0
