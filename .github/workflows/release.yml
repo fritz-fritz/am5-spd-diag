@@ -11,9 +11,10 @@
 # scripts (osc wait, notes, version gate) also come from the workflow
 # revision.
 #
-# Immutable GitHub Releases: new rpm/deb names can be attached; an
-# existing tarball cannot be replaced. Linear history on master only
-# affects how PRs merge (squash); it does not require a new tag.
+# Immutable GitHub Releases: published assets cannot be added or
+# replaced. OBS packages still publish; notes can be edited. Linear
+# history on master only affects how PRs merge (squash); it does not
+# require a new tag.
 #
 # Repository secrets:
 #   OBS_USER      OBS account that owns home:fritz-fritz
@@ -267,29 +268,49 @@ jobs:
         working-directory: .
         run: |
           tarball="am5-spd-diag/am5-spd-diag-$VERSION.tar.xz"
-          sha256=$(sha256sum "$tarball" | awk '{print $1}')
           extra=()
           # Notes script is checked out at github.sha (workflow-src).
           if [ "$PENDING_OBS" = true ] && \
              python3 workflow-src/scripts/release_notes.py -h 2>&1 | grep -q -- '--pending-obs'; then
             extra+=(--pending-obs)
           fi
-          notes=$(python3 workflow-src/scripts/release_notes.py \
-            --version "$VERSION" \
-            --sha256 "$sha256" \
-            --download "$OBS_DOWNLOAD" \
-            --changes am5-spd-diag/am5-spd-diag.changes \
-            "${extra[@]}")
           assets=("$RUNNER_TEMP"/release-assets/*)
           if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             existing=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')
+            tarname=$(basename "$tarball")
+            if printf '%s\n' "$existing" | grep -qxF "$tarname"; then
+              # Hash the immutable GitHub tarball, not a later dist rebuild.
+              gh release download "$TAG" --repo "$REPO" -p "$tarname" -D "$RUNNER_TEMP/gh-tar"
+              sha256=$(sha256sum "$RUNNER_TEMP/gh-tar/$tarname" | awk '{print $1}')
+            else
+              sha256=$(sha256sum "$tarball" | awk '{print $1}')
+            fi
+            notes=$(python3 workflow-src/scripts/release_notes.py \
+              --version "$VERSION" \
+              --sha256 "$sha256" \
+              --download "$OBS_DOWNLOAD" \
+              --changes am5-spd-diag/am5-spd-diag.changes \
+              "${extra[@]}")
+            immutable=
             for a in "${assets[@]}"; do
               name=$(basename "$a")
               if printf '%s\n' "$existing" | grep -qxF "$name"; then
                 echo "keeping existing $name (immutable releases cannot replace assets)"
                 continue
               fi
-              gh release upload "$TAG" "$a" --repo "$REPO"
+              if [ -n "$immutable" ]; then
+                echo "not attaching $name (GitHub Release $TAG is immutable)"
+                continue
+              fi
+              if ! out=$(gh release upload "$TAG" "$a" --repo "$REPO" 2>&1); then
+                printf '%s\n' "$out"
+                if printf '%s\n' "$out" | grep -qi 'immutable'; then
+                  echo "GitHub Release $TAG is immutable; OBS packages stay on the download page"
+                  immutable=1
+                  continue
+                fi
+                exit 1
+              fi
             done
             if [ "$PENDING_OBS" != true ] || [ "${#extra[@]}" -gt 0 ]; then
               gh release edit "$TAG" --repo "$REPO" --notes "$notes"
@@ -297,5 +318,12 @@ jobs:
               echo "leaving existing release notes (tag tree cannot describe a skipped OBS run)"
             fi
           else
+            sha256=$(sha256sum "$tarball" | awk '{print $1}')
+            notes=$(python3 workflow-src/scripts/release_notes.py \
+              --version "$VERSION" \
+              --sha256 "$sha256" \
+              --download "$OBS_DOWNLOAD" \
+              --changes am5-spd-diag/am5-spd-diag.changes \
+              "${extra[@]}")
             gh release create "$TAG" "${assets[@]}" --repo "$REPO" --title "$TAG" --notes "$notes"
           fi
