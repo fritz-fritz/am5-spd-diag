@@ -3,7 +3,8 @@
 # Ghost DIMM
 
 [![build result](https://build.opensuse.org/projects/home:fritz-fritz/packages/am5-spd-diag/badge.svg?type=default)](https://build.opensuse.org/package/show/home:fritz-fritz/am5-spd-diag)
-[![HitCount](https://hits.dwyl.com/fritz-fritz/am5-spd-diag.svg)](https://hits.dwyl.com/fritz-fritz/am5-spd-diag)
+![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/fritz-fritz/am5-spd-diag/total?label=%F0%9F%A0%9F%20Downloads&link=https%3A%2F%2Fgithub.com%2Ffritz-fritz%2Fam5-spd-diag%2Freleases%2Flatest)
+![HitCount](https://hits.dwyl.com/fritz-fritz/am5-spd-diag.svg)
 [![CodeQL](https://github.com/fritz-fritz/am5-spd-diag/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/fritz-fritz/am5-spd-diag/actions/workflows/github-code-scanning/codeql)
 
 **Your DDR5 is fine. Firmware made a ghost.**  
