@@ -8,6 +8,11 @@ on:
       - main
     tags-ignore:
       - "**"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -23,12 +28,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev pkg-config python3
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Tag is the rustc version (not an action release). Dependabot bumps it;
+      # dependabot-auto-merge runs scripts/sync_rust_pin.sh so OBS Source2,
+      # rust-toolchain.toml, and rust-version stay in lockstep.
+      - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: rustfmt, clippy
 
       - name: Check packaging versions agree
-        run: python3 scripts/bump_version.py --check
+        run: |
+          python3 scripts/bump_version.py --check
+          python3 scripts/check_rust_pin.py
 
       - name: Format
         run: cargo fmt --all -- --check

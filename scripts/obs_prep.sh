@@ -7,8 +7,7 @@
 set -eu
 
 RUST_PREFIX=/tmp/am5-rust
-RUST_FILE=rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
-RUST_DIR=rust-1.92.0-x86_64-unknown-linux-gnu
+PIN_TXT=$(dirname "$0")/../obs/rust-dist.txt
 
 log() {
 	printf 'obs_prep: %s\n' "$*" >&2
@@ -56,16 +55,33 @@ extract_vendor() {
 	test -f .cargo/config.toml
 }
 
+pin_rust_file() {
+	if [ -f "$PIN_TXT" ]; then
+		url=
+		while IFS= read -r line || [ -n "$line" ]; do
+			case "$line" in
+			URL=*) url=${line#URL=} ;;
+			esac
+		done <"$PIN_TXT"
+		if [ -n "$url" ]; then
+			basename "$url"
+			return 0
+		fi
+	fi
+	printf '%s\n' 'rust-*-x86_64-unknown-linux-gnu.tar.xz'
+}
+
 install_rust() {
 	archive=$1
 	if [ -x "$RUST_PREFIX/bin/rustc" ]; then
 		log "reusing $RUST_PREFIX ($("$RUST_PREFIX/bin/rustc" --version))"
 		return 0
 	fi
+	rust_dir=$(basename "$archive" .tar.xz)
 	log "installing rustc from $archive -> $RUST_PREFIX"
 	stage=$(mktemp -d /tmp/am5-rust-dist.XXXXXX)
 	tar -C "$stage" -xf "$archive"
-	installer="$stage/$RUST_DIR/install.sh"
+	installer="$stage/$rust_dir/install.sh"
 	if [ ! -f "$installer" ]; then
 		log "install.sh missing under $stage"
 		find "$stage" -maxdepth 3 -type f >&2 || true
@@ -92,6 +108,7 @@ else
 	exit 1
 fi
 
+RUST_FILE=$(pin_rust_file)
 if RUST=$(find_file "$RUST_FILE" "$RUST_ARG"); then
 	install_rust "$RUST"
 else

@@ -43,13 +43,12 @@ NOTIFY_RELEASE = $(or $(CARGO_TARGET_DIR),target)/release/$(NAME)-notify
 MAKEFILE_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 DIST_PARENT ?= $(abspath $(CURDIR)/..)
 RUST_DIST_TXT := $(MAKEFILE_DIR)obs/rust-dist.txt
-RUST_DIST_FILE := rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
 REPO ?= openSUSE_Tumbleweed
 ARCH ?= x86_64
 OSC_REPOS ?= openSUSE_Tumbleweed openSUSE_Slowroll 16.0 Fedora_44 Fedora_43 \
 	xUbuntu_26.04 xUbuntu_24.04 Debian_Testing Debian_13
 
-.PHONY: build test test-tool test-packaging bump bump-check install uninstall uninstall-purge dist vendor \
+.PHONY: build test test-tool test-packaging bump bump-check rust-pin install uninstall uninstall-purge dist vendor \
 	osc-fetch-rust osc-build osc-matrix osc-meta
 
 build:
@@ -65,14 +64,22 @@ bump:
 bump-check:
 	python3 scripts/bump_version.py --check $(TO)
 
+rust-pin:
+	@test -n "$(TO)" || { echo "usage: make rust-pin TO=1.97.0"; exit 1; }
+	$(MAKEFILE_DIR)scripts/sync_rust_pin.sh $(TO)
+
 test-packaging:
 	python3 tests/test_changelogs.py
 	python3 tests/test_bump_version.py
 	python3 scripts/bump_version.py --check
+	python3 scripts/check_rust_pin.py
 	python3 -m py_compile scripts/bump_version.py scripts/gen_changelogs.py \
-	  scripts/obs_wait.py scripts/obs_release.py scripts/release_notes.py
+	  scripts/obs_wait.py scripts/obs_release.py scripts/release_notes.py \
+	  scripts/check_rust_pin.py
 	sh -n scripts/obs_prep.sh
 	sh -n scripts/osc_fetch_rust.sh
+	sh -n scripts/rust_pin.sh
+	sh -n scripts/sync_rust_pin.sh
 	bash -n scripts/osc_build.sh
 	python3 scripts/release_notes.py --version dummy --sha256 deadbeef | grep -q 'OBS download page'
 	if [ -f am5-spd-diag.changes ]; then python3 scripts/gen_changelogs.py --check; fi

@@ -1,9 +1,14 @@
-# Cut a release by tagging vX.Y.Z after a local version bump.
+# Cut a release by tagging vX.Y.Z on the default branch after a local version bump.
 #
 # Maintainer flow:
 #   1. make bump TO=X.Y.Z MSG='Why this release.'
 #   2. Review the diff (lockfile, changelogs, packaging) and commit.
-#   3. git tag vX.Y.Z && git push origin vX.Y.Z
+#   3. Merge to the default branch, then:
+#        git tag vX.Y.Z && git push origin vX.Y.Z
+#
+# Tags that are not ancestors of the default branch (including tags pushed
+# from a PR) do not publish a GitHub Release and do not commit to OBS.
+# workflow_dispatch can attach binaries or, with commit_obs, upload sources.
 #
 # Dist packs the tagged tree with the workflow revision's Makefile, so a
 # later dist-recipe fix can rebuild Source0 for an already-published tag
@@ -59,7 +64,60 @@ env:
   OBS_DOWNLOAD: https://software.opensuse.org/download/package?package=am5-spd-diag&project=home:fritz-fritz
 
 jobs:
+  # Tag pushes from a PR branch still show this workflow as a check.
+  # Do not dist, publish, or osc commit unless the tagged commit is on
+  # the default branch (or the maintainer dispatched explicitly).
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.g.outputs.publish }}
+      obs: ${{ steps.g.outputs.obs }}
+    steps:
+      - name: Allow publish only from the default branch
+        id: g
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          COMMIT_OBS: ${{ (github.event_name == 'workflow_dispatch' && inputs.commit_obs) || false }}
+        run: |
+          set -euo pipefail
+          default=$(gh api "repos/$REPO" --jq .default_branch)
+          echo "default_branch=$default"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            if [ "$COMMIT_OBS" = "true" ]; then
+              echo "obs=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "obs=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          ahead=$(gh api "repos/$REPO/compare/${default}...${SHA}" --jq .ahead_by)
+          echo "compare ${default}...${SHA} ahead_by=$ahead"
+          if [ "$ahead" = "0" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "obs=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Tag is not on ${default} (ahead_by=$ahead). Skipping GitHub Release and OBS commit."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "obs=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  skipped:
+    needs: gate
+    if: needs.gate.outputs.publish != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Do not publish from a PR tag
+        run: echo "Tag is not on the default branch; no GitHub Release and no OBS commit."
+
   release:
+    needs: gate
+    if: needs.gate.outputs.publish == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     defaults:
@@ -108,7 +166,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-4-dev pkg-config python3 osc zstd xz-utils curl
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Tag is the rustc version (not an action release). Must match obs/rust-dist.txt.
+      - uses: dtolnay/rust-toolchain@1.92.0
 
       - name: Check versions match tag
         run: python3 scripts/bump_version.py --check "${{ steps.ver.outputs.version }}"
@@ -122,7 +181,7 @@ jobs:
           make -f ../workflow-src/Makefile osc-fetch-rust
           tarball="../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}.tar.xz"
           vendor="../${{ env.OBS_PACKAGE }}-${{ steps.ver.outputs.version }}-vendor.tar.zst"
-          rust="../rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz"
+          rust="../$(../workflow-src/scripts/rust_pin.sh file obs/rust-dist.txt)"
           ls -la "$tarball" "$vendor" "$rust"
           test -s "$tarball"
           test -s "$vendor"
@@ -157,8 +216,8 @@ jobs:
           chmod 600 "$RUNNER_TEMP/oscrc"
 
       - name: OBS version gate
-        id: gate
-        if: steps.osc.outputs.skip != 'true' && (github.event_name == 'push' || inputs.commit_obs == true)
+        id: obsgate
+        if: needs.gate.outputs.obs == 'true' && steps.osc.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_obs_commit == true }}
@@ -182,7 +241,7 @@ jobs:
             "${force[@]}"
 
       - name: Commit tagged sources to OBS
-        if: steps.osc.outputs.skip != 'true' && steps.gate.outputs.commit == 'true'
+        if: needs.gate.outputs.obs == 'true' && steps.osc.outputs.skip != 'true' && steps.obsgate.outputs.commit == 'true'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
           TAG: ${{ steps.ver.outputs.tag }}
@@ -191,7 +250,7 @@ jobs:
           osc="osc -c $RUNNER_TEMP/oscrc"
           src="$PWD"
           pkg="$RUNNER_TEMP/obs-pkg"
-          rust=rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
+          rust=$(../workflow-src/scripts/rust_pin.sh file obs/rust-dist.txt)
           $osc meta prjconf "$OBS_PROJECT" -F ../workflow-src/obs/prjconf
           $osc meta pkg "$OBS_PROJECT" "$OBS_PACKAGE" -F ../workflow-src/obs/package-meta.xml
           $osc checkout "$OBS_PROJECT" "$OBS_PACKAGE" -o "$pkg"

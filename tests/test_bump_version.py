@@ -289,9 +289,20 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "static.rust-lang.org" not in dist
     assert "osc-fetch-rust" in makefile
     assert (ROOT / "obs/rust-dist.txt").is_file()
+    assert (ROOT / "rust-toolchain.toml").is_file()
+    import check_rust_pin
+
+    assert check_rust_pin.main() == 0
     pin = (ROOT / "obs/rust-dist.txt").read_text(encoding="utf-8")
-    assert "https://static.rust-lang.org/dist/rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz" in pin
-    assert "d2ccef59dd9f7439f2c694948069f789a044dc1addcc0803613232af8f88ee0c" in pin
+    assert "https://static.rust-lang.org/dist/rust-" in pin
+    assert "VERSION=" in pin
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "dtolnay/rust-toolchain@stable" not in ci
+    assert "dtolnay/rust-toolchain@stable" not in release
+    assert "needs.gate.outputs.obs" in release
+    assert "ahead_by" in release
+    assert "github.event_name == 'push' || inputs.commit_obs" not in release
 
 
 def test_obs_package_meta_disables_eol_repos() -> None:

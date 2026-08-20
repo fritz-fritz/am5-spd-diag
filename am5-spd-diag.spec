@@ -25,7 +25,7 @@ Group:          System/Monitoring
 URL:            https://github.com/fritz-fritz/am5-spd-diag
 Source0:        %{name}-%{version}.tar.xz
 Source1:        %{name}-%{version}-vendor.tar.zst
-# Official rustc 1.92 (build-time only). Fetched by make osc-fetch-rust / GHA.
+# Official rustc (build-time only). Version is obs/rust-dist.txt.
 Source2:        rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
 ExclusiveArch:  x86_64
 BuildRequires:  cargo
@@ -58,7 +58,7 @@ removed.
 
 %build
 # Source0 has no vendor/. Extract Source1 and install Source2 rustc to
-# /tmp/am5-rust (path without ':') so every OBS chroot uses rustc 1.92.
+# /tmp/am5-rust (path without ':') so every OBS chroot uses the pinned rustc.
 sh %{_builddir}/%{name}-%{version}/scripts/obs_prep.sh %{SOURCE1} %{SOURCE2}
 export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home

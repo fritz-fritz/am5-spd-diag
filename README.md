@@ -198,9 +198,9 @@ Board and DIMM serials are included so a vendor can match the kit. System UUID a
 
 - RPM: `am5-spd-diag.spec` (OBS project `home:fritz-fritz`), **x86_64** (AM5)
 - Debian: OBS `debian.*` + `am5-spd-diag.dsc` (debtransform); local `debian/` (`dh` + the same Makefile). Architecture `amd64`.
-- Build: Rust (`cargo`), `gtk4-devel` / `libgtk-4-dev` for the notify window. `make dist` writes Source0 (no vendor) plus a vendor archive. OBS builds use a pinned official rustc 1.92 as Source2 (`make osc-fetch-rust`).
+- Build: Rust (`cargo`), `gtk4-devel` / `libgtk-4-dev` for the notify window. `make dist` writes Source0 (no vendor) plus a vendor archive. OBS builds use a pinned official rustc as Source2 (`obs/rust-dist.txt`, `make osc-fetch-rust`). CI and Release install that same version (`dtolnay/rust-toolchain@X.Y.Z`); Dependabot bumps the pin and `scripts/sync_rust_pin.sh` refreshes the OBS tarball checksum in the same PR.
 - Changelog source of truth is `am5-spd-diag.changes`. After editing it, run `python3 scripts/gen_changelogs.py` to refresh `debian.changelog`, `debian/changelog`, and the spec `%changelog`.
-- Cut a release with `make bump TO=X.Y.Z MSG='...'`, commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. GitHub Actions uploads Source0, the vendor archive, and pinned rustc to OBS and attaches the packages to the GitHub Release.
+- Cut a release with `make bump TO=X.Y.Z MSG='...'`, merge to the default branch, then `git tag vX.Y.Z && git push origin vX.Y.Z`. Tags on a PR branch do not publish or commit to OBS. GitHub Actions uploads Source0, the vendor archive, and pinned rustc to OBS and attaches the packages to the GitHub Release.
 - `dmidecode` is recommended. Capture reads SMBIOS from sysfs first and falls back to the `dmidecode` binary if the kernel table is unavailable.
 
 ---

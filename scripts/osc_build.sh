@@ -15,7 +15,7 @@ REPO=${1:-${REPO:-openSUSE_Tumbleweed}}
 ARCH=${2:-${ARCH:-x86_64}}
 OSC_WC=${OSC_WC:-/tmp/am5-spd-diag-osc-wc}
 DIST_PARENT=${DIST_PARENT:-$(cd "$ROOT/.." && pwd)}
-RUST_FILE=rust-1.92.0-x86_64-unknown-linux-gnu.tar.xz
+RUST_FILE=$("$ROOT/scripts/rust_pin.sh" file "$ROOT/obs/rust-dist.txt")
 
 # Cursor (and other AppImage hosts) export APPIMAGE+OWD. osc's babysitter
 # then chdirs to OWD ($HOME), so `osc build` from a checkout fails with

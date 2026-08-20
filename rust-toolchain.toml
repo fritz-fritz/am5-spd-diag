@@ -1,0 +1,6 @@
+# Keep in sync with obs/rust-dist.txt and dtolnay/rust-toolchain@VERSION
+# in .github/workflows. Dependabot bumps the workflow tags; the auto-merge
+# workflow runs scripts/sync_rust_pin.sh so the OBS tarball follows.
+[toolchain]
+channel = "1.92.0"
+components = ["rustfmt", "clippy"]
