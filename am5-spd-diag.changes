@@ -1,4 +1,11 @@
 -------------------------------------------------------------------
+Thu Aug 20 18:10:39 UTC 2026 - Fritz <code@fritztech.net>
+
+- Strip release binaries at rustc (thin LTO), skip rpm debuginfo and Debian
+  dbgsym, hardlink pkexec helpers, add systemd %pre, and filter Factory
+  polkit rpmlint on the home project.
+
+-------------------------------------------------------------------
 Thu Aug 20 15:23:25 UTC 2026 - Fritz <code@fritztech.net>
 
 - Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS

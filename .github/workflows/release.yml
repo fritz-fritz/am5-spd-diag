@@ -273,6 +273,7 @@ jobs:
             cp -f "$src/$rust" "$pkg/"
           fi
           cp -f "$src/$OBS_PACKAGE.spec" "$src/$OBS_PACKAGE.changes" "$src/$OBS_PACKAGE.dsc" "$pkg/"
+          cp -f "$src/$OBS_PACKAGE.rpmlintrc" "$pkg/"
           cp -f "$src"/debian.control "$src"/debian.changelog "$src"/debian.rules \
             "$src"/debian.compat "$src"/debian.copyright "$pkg/"
           (
@@ -290,6 +291,7 @@ jobs:
             $osc add "$OBS_PACKAGE-$VERSION.tar.xz" || true
             $osc add "$OBS_PACKAGE-$VERSION-vendor.tar.zst" || true
             $osc add "$rust" || true
+            $osc add "$OBS_PACKAGE.rpmlintrc" || true
             $osc commit -m "Release $VERSION from $TAG ($SOURCE_SHA)"
           )
 

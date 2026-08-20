@@ -3,6 +3,8 @@ export DH_VERBOSE = 1
 export CARGO_HOME = $(CURDIR)/.cargo-home
 # Official rustc install prefix (no ':' — rustc rejects that in library paths).
 export PATH := /tmp/am5-rust/bin:$(PATH)
+# Cargo already strips release binaries; do not emit a dbgsym companion.
+export DEB_BUILD_OPTIONS := $(DEB_BUILD_OPTIONS) noautodbgsym
 
 %:
 	dh $@
@@ -23,3 +25,6 @@ override_dh_auto_install:
 
 override_dh_installsystemd:
 	dh_installsystemd --no-start --no-stop-on-upgrade
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym

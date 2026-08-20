@@ -1,0 +1,7 @@
+# Passwordless snapshot/probe for a local active session is intentional.
+# Factory polkit-default-privs / rules whitelist do not apply to a home project.
+Filters = [
+    "polkit-user-privilege",
+    "polkit-untracked-privilege",
+    "polkit-file-unauthorized",
+]

@@ -53,6 +53,7 @@ fi
 
 cp -f "$SRC0" "$SRC1" "$SRC2" "$OSC_WC/"
 cp -f "$ROOT/$NAME.spec" "$ROOT/$NAME.changes" "$ROOT/$NAME.dsc" "$OSC_WC/"
+cp -f "$ROOT/$NAME.rpmlintrc" "$OSC_WC/"
 cp -f "$ROOT"/debian.control "$ROOT"/debian.changelog "$ROOT"/debian.rules \
 	"$ROOT"/debian.compat "$ROOT"/debian.copyright "$OSC_WC/"
 
@@ -71,7 +72,7 @@ cp -f "$ROOT"/debian.control "$ROOT"/debian.changelog "$ROOT"/debian.rules \
 	osc add "$NAME-$VERSION.tar.xz" 2>/dev/null || true
 	osc add "$NAME-$VERSION-vendor.tar.zst" 2>/dev/null || true
 	osc add "$RUST_FILE" 2>/dev/null || true
-	osc add "$NAME.spec" "$NAME.changes" "$NAME.dsc" \
+	osc add "$NAME.spec" "$NAME.changes" "$NAME.dsc" "$NAME.rpmlintrc" \
 		debian.control debian.changelog debian.rules debian.compat debian.copyright \
 		2>/dev/null || true
 )
