@@ -20,3 +20,9 @@ gtk4 = { version = "0.11", features = ["v4_8"] }
 pulldown-cmark = "0.13"
 serde_json = "1"
 zbus = "5"
+
+[features]
+default = ["gtk4_v4_10"]
+# AlertDialog + FileLauncher. gtk4-sys requires pkg-config gtk4 ≥ 4.10.
+# Makefile passes --no-default-features on Debian 12 (GTK 4.8).
+gtk4_v4_10 = ["gtk4/v4_10"]

@@ -2,6 +2,7 @@
 //!
 //! Capture never links this crate. A click opens our GTK window, not a terminal.
 
+mod gtk_api;
 mod markdown;
 
 use am5_spd_diag::analyze::{
@@ -17,7 +18,7 @@ use am5_spd_diag::notify::{
 };
 use am5_spd_diag::paths::{run_pkexec_helper, share_dir, HelperKind};
 use am5_spd_diag::FORUM_URL;
-use gtk4::gio::{self, ApplicationFlags};
+use gtk4::gio::ApplicationFlags;
 use gtk4::{
     Align, Application, ApplicationWindow, Box as GtkBox, Button, HeaderBar, Image, Label,
     Orientation, PolicyType, ScrolledWindow, Separator,
@@ -426,24 +427,11 @@ fn results_text(action: &str, package_root: Option<&Path>) -> (String, String) {
 }
 
 fn open_containing_folder(parent: &ApplicationWindow, file_path: &Path) {
-    use gtk4::gio::prelude::FileExt;
-    let dir = file_path.parent().unwrap_or(file_path);
-    let uri = gio::File::for_path(dir).uri();
-    gtk4::show_uri(Some(parent), uri.as_str(), 0);
+    gtk_api::open_containing_folder(parent, file_path);
 }
 
 fn show_message(parent: &ApplicationWindow, kind: gtk4::MessageType, message: &str, detail: &str) {
-    use gtk4::prelude::{DialogExt, GtkWindowExt};
-    let dialog = gtk4::MessageDialog::builder()
-        .transient_for(parent)
-        .modal(true)
-        .message_type(kind)
-        .buttons(gtk4::ButtonsType::Close)
-        .text(message)
-        .secondary_text(detail)
-        .build();
-    dialog.connect_response(|d, _| d.close());
-    dialog.present();
+    gtk_api::show_message(parent, kind, message, detail);
 }
 
 fn package_output_dir(cfg: &Config) -> PathBuf {
@@ -552,63 +540,66 @@ fn update_fix_button(fix_btn: &Button, from_archive: bool) {
 }
 
 fn show_fix_dialog(parent: &ApplicationWindow, after: Rc<dyn Fn()>) {
-    use gtk4::prelude::{DialogExt, GtkWindowExt};
-    let dialog = gtk4::MessageDialog::builder()
-        .transient_for(parent)
-        .modal(true)
-        .message_type(gtk4::MessageType::Warning)
-        .text("Experimental in-band SPD hub fix")
-        .secondary_text(format!(
-            "This writes SPD5118 MR11 to 0x0000 on hubs that currently read 0x08 (stuck standby page).\n\n\
+    let detail = format!(
+        "This writes SPD5118 MR11 to 0x0000 on hubs that currently read 0x08 (stuck standby page).\n\n\
 It does not rewrite SPD EEPROM. The kernel spd5118 driver may still be bound, so the write uses I2C_SLAVE_FORCE. BIOS may show “Devices Changed” after reboot.\n\n\
 This will not reboot the machine. A warm reboot is required after a successful clear so firmware re-reads the real SPD. Sleep/wake is not enough.\n\n\
 Source: {FORUM_URL}"
-        ))
-        .build();
-    dialog.add_button("Cancel", gtk4::ResponseType::Cancel);
-    dialog.add_button("Fix", gtk4::ResponseType::Accept);
+    );
     let parent = parent.clone();
-    dialog.connect_response(move |d, response| {
-        d.close();
-        if response != gtk4::ResponseType::Accept {
-            return;
-        }
-        match run_live_recover() {
-            Ok(payload) => {
-                let ok = payload.get("ok").and_then(|v| v.as_bool()) == Some(true);
-                let reason = payload
-                    .get("reason")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-                let detail = if ok {
-                    "The clear was recorded. Warm reboot now so firmware re-reads SPD. Do not expect identity to change until after reboot.".into()
-                } else if reason == "no_stuck_hub" {
-                    "No hub with MR11=0x08 was found. Firmware can still publish Unknown/missing part until a reboot or AC power loss.".into()
-                } else {
-                    format!("reason={reason}\n{}", serde_json::to_string_pretty(&payload).unwrap_or_default())
-                };
-                show_message(
-                    &parent,
-                    if ok {
-                        gtk4::MessageType::Info
-                    } else {
-                        gtk4::MessageType::Warning
-                    },
-                    if ok {
-                        "MR11 cleared — reboot now"
-                    } else {
-                        "Fix did not clear MR11"
-                    },
-                    &detail,
-                );
-                after();
+    let parent_for_cb = parent.clone();
+    gtk_api::confirm_fix(
+        &parent,
+        "Experimental in-band SPD hub fix",
+        &detail,
+        move |accepted| {
+            if !accepted {
+                return;
             }
-            Err(e) => {
-                show_message(&parent, gtk4::MessageType::Error, "Could not run fix", &e);
+            match run_live_recover() {
+                Ok(payload) => {
+                    let ok = payload.get("ok").and_then(|v| v.as_bool()) == Some(true);
+                    let reason = payload
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let detail = if ok {
+                        "The clear was recorded. Warm reboot now so firmware re-reads SPD. Do not expect identity to change until after reboot.".into()
+                    } else if reason == "no_stuck_hub" {
+                        "No hub with MR11=0x08 was found. Firmware can still publish Unknown/missing part until a reboot or AC power loss.".into()
+                    } else {
+                        format!(
+                            "reason={reason}\n{}",
+                            serde_json::to_string_pretty(&payload).unwrap_or_default()
+                        )
+                    };
+                    show_message(
+                        &parent_for_cb,
+                        if ok {
+                            gtk4::MessageType::Info
+                        } else {
+                            gtk4::MessageType::Warning
+                        },
+                        if ok {
+                            "MR11 cleared — reboot now"
+                        } else {
+                            "Fix did not clear MR11"
+                        },
+                        &detail,
+                    );
+                    after();
+                }
+                Err(e) => {
+                    show_message(
+                        &parent_for_cb,
+                        gtk4::MessageType::Error,
+                        "Could not run fix",
+                        &e,
+                    );
+                }
             }
-        }
-    });
-    dialog.present();
+        },
+    );
 }
 
 fn apply_activation_token(token: Option<&str>) {
@@ -625,8 +616,7 @@ fn register_app_icon() {
         return;
     };
     let theme = gtk4::IconTheme::for_display(&display);
-    let dir = share_dir().join("icons/hicolor");
-    if dir.is_dir() {
+    for dir in gtk_api::icon_theme_search_dirs(&share_dir()) {
         theme.add_search_path(dir);
     }
 }
@@ -663,6 +653,16 @@ fn show_window(action: &str, token: Option<String>, package: Option<PackageSessi
             window.connect_realize(move |w| {
                 if let Ok(display) = w.display().downcast::<gdk4_wayland::WaylandDisplay>() {
                     display.set_startup_notification_id(&tok);
+                }
+                #[cfg(feature = "gtk4_v4_10")]
+                if gtk_api::use_gtk4_10_apis() {
+                    use gtk4::gdk::prelude::ToplevelExt;
+                    use gtk4::prelude::NativeExt;
+                    if let Some(surface) = w.surface() {
+                        if let Ok(toplevel) = surface.downcast::<gdk4_wayland::WaylandToplevel>() {
+                            toplevel.set_startup_id(&tok);
+                        }
+                    }
                 }
             });
         }

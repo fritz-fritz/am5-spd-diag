@@ -35,6 +35,11 @@ CARGOFLAGS ?=
 ifneq ($(wildcard vendor),)
 CARGOFLAGS += --offline --config net.offline=true
 endif
+# gtk4-sys will not enable v4_10 unless the chroot's gtk4 is ≥ 4.10.
+# Debian 12 is 4.8; keep MessageDialog there. Newer distros keep AlertDialog.
+ifneq ($(shell pkg-config --exists 'gtk4 >= 4.10' 2>/dev/null && echo yes),yes)
+CARGOFLAGS += --no-default-features
+endif
 
 BIN_DEBUG = $(or $(CARGO_TARGET_DIR),target)/debug/$(NAME)
 BIN_RELEASE = $(or $(CARGO_TARGET_DIR),target)/release/$(NAME)
@@ -83,6 +88,8 @@ test-packaging:
 	bash -n scripts/osc_build.sh
 	python3 scripts/release_notes.py --version dummy --sha256 deadbeef | grep -q 'OBS download page'
 	if [ -f am5-spd-diag.changes ]; then python3 scripts/gen_changelogs.py --check; fi
+	grep -q "gtk4 >= 4.10" Makefile
+	grep -q 'default = \["gtk4_v4_10"\]' crates/am5-spd-diag-notify/Cargo.toml
 	if [ -d debian ]; then \
 	  cmp -s debian.control debian/control && \
 	  cmp -s debian.copyright debian/copyright && \
@@ -107,6 +114,7 @@ test-packaging:
 test-tool:
 	$(CARGO) test -p am5-spd-diag $(CARGOFLAGS)
 	$(CARGO) build -p am5-spd-diag $(CARGOFLAGS)
+	$(CARGO) test -p am5-spd-diag-notify $(CARGOFLAGS)
 	$(CARGO) build -p am5-spd-diag-notify $(CARGOFLAGS)
 	make test-cli BIN=$(BIN_DEBUG)
 	test -x $(or $(CARGO_TARGET_DIR),target)/debug/$(NAME)-notify

@@ -117,6 +117,11 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 
 %changelog
 * Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
+- Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer; keep
+  MessageDialog on Debian 12 (GTK 4.8). Fix the header-bar icon search path
+  so the app icon loads from the source tree.
+
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.1
 - Split OBS sources and pin official rustc from rust-toolchain.toml so older
   distros can build. Dependabot bumps the toolchain; OBS Source2 and CI
   follow that pin. GTK window targets GTK 4.8 so Debian 12 (oldstable)

@@ -1,4 +1,11 @@
 -------------------------------------------------------------------
+Thu Aug 20 13:04:18 UTC 2026 - Fritz <code@fritztech.net>
+
+- Use GTK AlertDialog and FileLauncher when libgtk is 4.10 or newer;
+  keep MessageDialog on Debian 12 (GTK 4.8). Fix the header-bar icon
+  search path so the app icon loads from the source tree.
+
+-------------------------------------------------------------------
 Thu Aug 20 10:50:13 UTC 2026 - Fritz <code@fritztech.net>
 
 - Split OBS sources and pin official rustc from rust-toolchain.toml so
