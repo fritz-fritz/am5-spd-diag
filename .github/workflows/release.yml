@@ -258,6 +258,7 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
           TAG: ${{ steps.ver.outputs.tag }}
           SOURCE_SHA: ${{ steps.src.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           osc="osc -c $RUNNER_TEMP/oscrc"
           src="$PWD"
@@ -276,6 +277,16 @@ jobs:
           cp -f "$src/$OBS_PACKAGE.rpmlintrc" "$pkg/"
           cp -f "$src"/debian.control "$src"/debian.changelog "$src"/debian.rules \
             "$src"/debian.compat "$src"/debian.copyright "$pkg/"
+          msg="$RUNNER_TEMP/obs-commit-msg.txt"
+          since_args=()
+          if since=$(gh release list --limit 1 --json publishedAt \
+            --jq '.[0].publishedAt // empty' 2>/dev/null) && [ -n "$since" ]; then
+            since_args+=(--since "$since")
+          fi
+          python3 ../workflow-src/scripts/obs_commit_msg.py \
+            --version "$VERSION" --tag "$TAG" --sha "$SOURCE_SHA" \
+            --changes "$src/$OBS_PACKAGE.changes" \
+            "${since_args[@]}" | tee "$msg"
           (
             cd "$pkg"
             for old in "$OBS_PACKAGE"-*.tar.xz; do
@@ -292,7 +303,7 @@ jobs:
             $osc add "$OBS_PACKAGE-$VERSION-vendor.tar.zst" || true
             $osc add "$rust" || true
             $osc add "$OBS_PACKAGE.rpmlintrc" || true
-            $osc commit -m "Release $VERSION from $TAG ($SOURCE_SHA)"
+            $osc commit -F "$msg"
           )
 
       - name: Wait for OBS binaries

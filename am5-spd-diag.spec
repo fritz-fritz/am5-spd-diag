@@ -136,6 +136,8 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 - Strip release binaries at rustc (thin LTO), skip rpm debuginfo and Debian
   dbgsym, hardlink pkexec helpers, add systemd %%pre, and filter Factory
   polkit rpmlint on the home project.
+- Use the changelog since the previous GitHub release as the OBS commit
+  message.
 
 * Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.3
 - Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS

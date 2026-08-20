@@ -80,8 +80,8 @@ test-packaging:
 	python3 scripts/bump_version.py --check
 	python3 scripts/check_rust_pin.py
 	python3 -m py_compile scripts/bump_version.py scripts/gen_changelogs.py \
-	  scripts/obs_wait.py scripts/obs_release.py scripts/release_notes.py \
-	  scripts/check_rust_pin.py
+	  scripts/obs_wait.py scripts/obs_release.py scripts/obs_commit_msg.py \
+	  scripts/release_notes.py scripts/check_rust_pin.py
 	sh -n scripts/obs_prep.sh
 	sh -n scripts/osc_fetch_rust.sh
 	sh -n scripts/rust_pin.sh
