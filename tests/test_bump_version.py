@@ -211,6 +211,28 @@ def test_obs_wait_payload() -> None:
     assert not wait.is_payload("am5-spd-diag-debuginfo-1.0.0-0.x86_64.rpm", "1.0.0")
 
 
+def test_obs_release_gate() -> None:
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import obs_release as rel  # noqa: E402
+
+    assert rel.parse_spec_version("Name: x\nVersion: 1.0.0\n") == "1.0.0"
+    assert rel.allow_commit("1.0.0", None, False)
+    assert rel.allow_commit("1.0.1", "1.0.0", False)
+    assert rel.allow_commit("1.0.0", "1.0.0", False)
+    assert not rel.allow_commit("1.0.0", "1.0.1", False)
+    assert rel.allow_commit("1.0.0", "1.0.1", True)
+
+
+def test_obs_rebuild_url() -> None:
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import obs_trigger as trig  # noqa: E402
+
+    url = trig.rebuild_url("https://api.opensuse.org", "home:fritz-fritz", "am5-spd-diag")
+    assert url.startswith("https://api.opensuse.org/trigger/rebuild?")
+    assert "project=home%3Afritz-fritz" in url
+    assert "package=am5-spd-diag" in url
+
+
 def test_release_notes_mentions_obs() -> None:
     sys.path.insert(0, str(ROOT / "scripts"))
     import release_notes as notes  # noqa: E402
@@ -254,5 +276,7 @@ if __name__ == "__main__":
     test_check_drift()
     test_check_tree()
     test_obs_wait_payload()
+    test_obs_release_gate()
+    test_obs_rebuild_url()
     test_release_notes_mentions_obs()
     print("ok")

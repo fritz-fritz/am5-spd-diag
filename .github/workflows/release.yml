@@ -5,24 +5,25 @@
 #   2. Review the diff (lockfile, changelogs, packaging) and commit.
 #   3. git tag vX.Y.Z && git push origin vX.Y.Z
 #
-# This workflow does not run `make bump`. It verifies the tag already matches
-# Cargo/Makefile/spec/dsc/man, builds the vendored source tarball, commits that
-# tarball plus packaging files into OBS home:fritz-fritz/am5-spd-diag, waits for
-# OBS, then attaches the binaries and tarball to a GitHub Release.
+# Dist, tests, and the OBS source tarball always come from the tagged
+# commit (workflow_dispatch ref= that tag). Orchestration scripts come
+# from the workflow revision so an old tag can still be published.
+#
+# OBS Profile → Tokens: create type **rebuild**, bound to
+# home:fritz-fritz / am5-spd-diag. That token cannot osc commit; it only
+# starts a build of whatever sources are already in that package.
+# workflow / service / release tokens are the wrong kind (webhook SCM
+# CI, _service rerun, or copying binaries between OBS projects).
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
-#   OBS_USER      OBS account that owns home:fritz-fritz
-#   OBS_PASSWORD  that account's password for osc HTTP Basic Auth
-#                 (api.opensuse.org). Not a rebuild/release/service/workflow
-#                 trigger token from Profile → Tokens.
+#   OBS_USER           OBS account that owns home:fritz-fritz
+#   OBS_PASSWORD       that account's password (osc checkout/commit/getbinaries)
+#   OBS_REBUILD_TOKEN  rebuild trigger token string (optional; used after commit)
 #
-# workflow_dispatch retries asset attach for an existing tag. Leave
-# commit_obs off if OBS already has the sources (wait timed out). Turn it
-# on to push the vendored tarball when the tag run skipped OBS (empty
-# OBS_PASSWORD) or the commit never landed.
-#
-# Confirm the home project publish flag is on. osc getbinaries reads the build
-# backend, so attachments do not wait on download.opensuse.org.
+# workflow_dispatch of a previous tag checks out that tag. Leave
+# commit_obs off to attach binaries already on OBS. Turn it on to upload
+# that tag's vendored tarball. That is refused if OBS already has a
+# newer Version, unless force_obs_commit (would roll the live package back).
 
 name: Release
 
@@ -37,7 +38,12 @@ on:
         required: true
         type: string
       commit_obs:
-        description: Commit the vendored tarball to OBS before waiting for binaries
+        description: Upload this tag's vendored tarball to OBS (refused if OBS is already newer)
+        required: false
+        type: boolean
+        default: false
+      force_obs_commit:
+        description: Overwrite a newer live OBS package with this older tag
         required: false
         type: boolean
         default: false
@@ -87,6 +93,13 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Record tagged commit
+        id: src
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Tagged tree $sha ($(git describe --tags --always --dirty))"
+
       - name: Install build deps
         working-directory: .
         run: |
@@ -132,10 +145,37 @@ jobs:
           EOF
           chmod 600 "$RUNNER_TEMP/oscrc"
 
-      - name: Commit sources to OBS
+      - name: OBS version gate
+        id: gate
         if: steps.osc.outputs.skip != 'true' && (github.event_name == 'push' || inputs.commit_obs == true)
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_obs_commit == true }}
+        working-directory: .
+        run: |
+          osc="osc -c $RUNNER_TEMP/oscrc"
+          spec="$RUNNER_TEMP/obs-live.spec"
+          if $osc cat "$OBS_PROJECT" "$OBS_PACKAGE" "$OBS_PACKAGE.spec" > "$spec"; then
+            true
+          else
+            rm -f "$spec"
+          fi
+          force=()
+          if [ "$FORCE" = true ]; then
+            force+=(--force)
+          fi
+          python3 workflow-src/scripts/obs_release.py \
+            --version "$VERSION" \
+            --spec "$spec" \
+            --github-output "$GITHUB_OUTPUT" \
+            "${force[@]}"
+
+      - name: Commit tagged sources to OBS
+        if: steps.osc.outputs.skip != 'true' && steps.gate.outputs.commit == 'true'
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          SOURCE_SHA: ${{ steps.src.outputs.sha }}
         run: |
           osc="osc -c $RUNNER_TEMP/oscrc"
           src="$PWD"
@@ -153,13 +193,29 @@ jobs:
               $osc rm --force "$old" || rm -f "$old"
             done
             $osc add "$OBS_PACKAGE-$VERSION.tar.xz" || true
-            $osc commit -m "Release $VERSION from $GITHUB_SHA"
+            $osc commit -m "Release $VERSION from $TAG ($SOURCE_SHA)"
           )
+
+      - name: Trigger OBS rebuild
+        if: steps.osc.outputs.skip != 'true' && steps.gate.outputs.commit == 'true'
+        env:
+          OBS_REBUILD_TOKEN: ${{ secrets.OBS_REBUILD_TOKEN }}
+        working-directory: .
+        run: |
+          if [ -z "$OBS_REBUILD_TOKEN" ]; then
+            echo "OBS_REBUILD_TOKEN unset; osc commit already queued a build."
+            exit 0
+          fi
+          python3 workflow-src/scripts/obs_trigger.py \
+            --token "$OBS_REBUILD_TOKEN" \
+            --project "$OBS_PROJECT" \
+            --package "$OBS_PACKAGE"
 
       - name: Wait for OBS binaries
         if: steps.osc.outputs.skip != 'true'
+        working-directory: .
         run: |
-          python3 scripts/obs_wait.py \
+          python3 workflow-src/scripts/obs_wait.py \
             --config "$RUNNER_TEMP/oscrc" \
             --project "$OBS_PROJECT" \
             --package "$OBS_PACKAGE" \
@@ -169,11 +225,12 @@ jobs:
         if: steps.osc.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+        working-directory: .
         run: |
           dest="$RUNNER_TEMP/obs-bins"
           assets="$RUNNER_TEMP/release-assets"
           mkdir -p "$dest" "$assets"
-          python3 scripts/obs_wait.py \
+          python3 workflow-src/scripts/obs_wait.py \
             --config "$RUNNER_TEMP/oscrc" \
             --project "$OBS_PROJECT" \
             --package "$OBS_PACKAGE" \
@@ -194,7 +251,7 @@ jobs:
             stem=${base%.*}
             cp -f "$f" "$assets/${stem}.${repo}.${ext}"
           done
-          cp -f "$OBS_PACKAGE-$VERSION.tar.xz" "$assets/"
+          cp -f "am5-spd-diag/$OBS_PACKAGE-$VERSION.tar.xz" "$assets/"
           count=$(find "$assets" -type f | wc -l)
           echo "Collected $count release assets:"
           ls -l "$assets"
