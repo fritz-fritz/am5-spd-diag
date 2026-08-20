@@ -89,9 +89,42 @@ def test_check_without_debian_dir() -> None:
         assert gen.check_outputs(debian_text, spec_text, root=root) == []
 
 
+def test_obs_commit_message_uses_changelog_since_last_release() -> None:
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import obs_commit_msg as obsmsg  # noqa: E402
+
+    entries = gen.parse_changes(SAMPLE)
+    assert obsmsg.bullets_since_last_release(entries, None) == list(entries[0].bullets)
+    after_first = obsmsg.parse_since("2026-08-17T07:00:00Z")
+    assert obsmsg.bullets_since_last_release(entries, after_first) == list(
+        entries[0].bullets
+    )
+    before_all = obsmsg.parse_since("2026-08-17T05:00:00+00:00")
+    assert obsmsg.bullets_since_last_release(entries, before_all) == [
+        entries[0].bullets[0],
+        entries[1].bullets[0],
+    ]
+    after_all = obsmsg.parse_since("2026-08-18T00:00:00Z")
+    assert obsmsg.bullets_since_last_release(entries, after_all) == list(
+        entries[0].bullets
+    )
+    text = obsmsg.obs_commit_message(
+        "1.0.3",
+        "v1.0.3",
+        "abcdef1234567890",
+        SAMPLE,
+        since=after_first,
+    )
+    assert text.startswith("Release 1.0.3 from v1.0.3 (abcdef123456)\n")
+    assert "- Own /usr/lib/systemd/system-sleep" in text
+    assert "Initial package 0.1.0" not in text
+    assert "Release 1.0.3 from v1.0.3 (abcdef1234567890)" not in text
+
+
 if __name__ == "__main__":
     test_parse_and_debian()
     test_spec_changelog()
     test_repo_changes_parse()
     test_check_without_debian_dir()
+    test_obs_commit_message_uses_changelog_since_last_release()
     print("ok")
