@@ -12,7 +12,9 @@
 #
 # Repository secrets (Settings → Secrets and variables → Actions):
 #   OBS_USER      OBS account that owns home:fritz-fritz
-#   OBS_PASSWORD  OBS password / app password for osc (api.opensuse.org)
+#   OBS_PASSWORD  that account's password for osc HTTP Basic Auth
+#                 (api.opensuse.org). Not a rebuild/release/service/workflow
+#                 trigger token from Profile → Tokens.
 #
 # workflow_dispatch retries asset attach for an existing tag. Leave
 # commit_obs off if OBS already has the sources (wait timed out). Turn it
@@ -60,6 +62,13 @@ jobs:
         with:
           path: am5-spd-diag
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      # Notes/scripts come from the workflow revision (master on dispatch),
+      # not the tag. Dist still packs the tagged tree.
+      - uses: actions/checkout@v7
+        with:
+          path: workflow-src
+          ref: ${{ github.sha }}
 
       - name: Resolve tag
         id: ver
@@ -215,13 +224,12 @@ jobs:
           tarball="am5-spd-diag/am5-spd-diag-$VERSION.tar.xz"
           sha256=$(sha256sum "$tarball" | awk '{print $1}')
           extra=()
-          # workflow_dispatch runs this file from master but checks out the tag.
-          # --pending-obs exists only on trees after that flag landed.
+          # Notes script is checked out at github.sha (workflow-src).
           if [ "$PENDING_OBS" = true ] && \
-             python3 am5-spd-diag/scripts/release_notes.py -h 2>&1 | grep -q -- '--pending-obs'; then
+             python3 workflow-src/scripts/release_notes.py -h 2>&1 | grep -q -- '--pending-obs'; then
             extra+=(--pending-obs)
           fi
-          notes=$(python3 am5-spd-diag/scripts/release_notes.py \
+          notes=$(python3 workflow-src/scripts/release_notes.py \
             --version "$VERSION" \
             --sha256 "$sha256" \
             --download "$OBS_DOWNLOAD" \

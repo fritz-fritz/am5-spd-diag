@@ -18,6 +18,31 @@ DEFAULT_DOWNLOAD = (
     "?package=am5-spd-diag&project=home:fritz-fritz"
 )
 
+ABOUT = (
+    "Linux helper for the AM5 DDR5 **Ghost DIMM**: after sleep, firmware can "
+    "report a real module as an unknown 2 GB stick until AC is cut. This tool "
+    "remembers a healthy kit, checks again after sleep and reboot, notifies "
+    "when identity goes wrong, and can unstick the hub without crawling under "
+    "the desk."
+)
+
+# First public tag: describe the product, not the last packaging PR.
+INITIAL_1_0_0 = (
+    "- First stable Linux release: `am5-spd-diag` CLI plus the **Ghost DIMM** GTK window.\n"
+    "- Captures DDR5 SPD/DIMM identity at boot, shutdown, before sleep, and after resume.\n"
+    "- Probe the SPD5118 hub and optionally clear a stuck MR11 in-band, then reboot — no wall-plug crawl.\n"
+    "- Build a vendor-ticket report and an evidence tarball from the last capture."
+)
+
+
+def _change_bullets(version: str, changes_path: Path) -> str:
+    if version == "1.0.0":
+        return INITIAL_1_0_0
+    entries = gen.parse_changes(changes_path.read_text(encoding="utf-8"))
+    if not entries:
+        return f"- {version}"
+    return "\n".join(f"- {b}" for b in entries[0].bullets)
+
 
 def notes(
     version: str,
@@ -26,8 +51,7 @@ def notes(
     changes_path: Path,
     obs_built: bool = True,
 ) -> str:
-    entries = gen.parse_changes(changes_path.read_text(encoding="utf-8"))
-    bullets = "\n".join(f"- {b}" for b in entries[0].bullets) if entries else f"- {version}"
+    bullets = _change_bullets(version, changes_path)
     if obs_built:
         lead = (
             f"Packages for {version} were built on the Open Build Service.\n"
@@ -38,13 +62,15 @@ def notes(
     else:
         lead = (
             f"Source tarball for {version}. Open Build Service packages were not "
-            "attached in this run (empty `OBS_PASSWORD` Actions secret).\n"
+            "attached in this run.\n"
             "\n"
             f"Install from the [OBS download page]({download}) once packages appear. "
             "GitHub attachments are convenience copies for this tag.\n"
         )
     return (
         f"{lead}"
+        "\n"
+        f"{ABOUT}\n"
         "\n"
         "## Changes\n"
         "\n"

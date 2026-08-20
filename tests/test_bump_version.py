@@ -219,6 +219,8 @@ def test_release_notes_mentions_obs() -> None:
     assert "OBS download page" in text
     assert "abc" in text
     assert "1.0.0" in text
+    assert "Ghost DIMM" in text
+    assert "O_NOFOLLOW" not in text
     pending = notes.notes(
         "1.0.0",
         "abc",
@@ -226,8 +228,11 @@ def test_release_notes_mentions_obs() -> None:
         ROOT / "am5-spd-diag.changes",
         obs_built=False,
     )
-    assert "empty `OBS_PASSWORD`" in pending
+    assert "empty `OBS_PASSWORD`" not in pending
     assert "were built on the Open Build Service" not in pending
+    later = notes.notes("1.0.1", "def", notes.DEFAULT_DOWNLOAD, ROOT / "am5-spd-diag.changes")
+    assert "Ghost DIMM" in later
+    assert "- " in later
 
 
 def _write_tree(root: Path) -> None:
