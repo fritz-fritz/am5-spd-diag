@@ -457,6 +457,9 @@ def test_release_profile_and_rpmlint() -> None:
     assert "$NAME.rpmlintrc" in osc_build
     release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     assert "$OBS_PACKAGE.rpmlintrc" in release
+    assert "scripts/obs_commit_msg.py" in release
+    assert "osc commit -F" in release
+    assert 'osc commit -m "Release $VERSION from $TAG ($SOURCE_SHA)"' not in release
 
 
 def _write_tree(root: Path) -> None:

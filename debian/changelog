@@ -3,6 +3,8 @@ am5-spd-diag (1.0.3-1) unstable; urgency=medium
   * Strip release binaries at rustc (thin LTO), skip rpm debuginfo and
     Debian dbgsym, hardlink pkexec helpers, add systemd %pre, and filter
     Factory polkit rpmlint on the home project.
+  * Use the changelog since the previous GitHub release as the OBS commit
+    message.
   * Re-enable Ubuntu 24.10/25.04/25.10 OBS builds, wait through OBS
     finished/signing before attaching GitHub assets, pin Actions to commit
     SHAs, and attest SHA256SUMS plus the source tarball.
