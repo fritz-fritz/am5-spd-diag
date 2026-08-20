@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wait until OBS has succeeded binaries whose names contain VERSION."""
+"""Wait until OBS has versioned binaries. Sibling repo failures are skipped."""
 from __future__ import annotations
 
 import argparse
@@ -77,6 +77,13 @@ def is_payload(name: str, version: str) -> bool:
     return name.endswith(".rpm") or name.endswith(".deb")
 
 
+def finished_ok(pending: list[str], ready: list[str]) -> bool | None:
+    """None = keep polling. True = versioned payloads exist. False = nothing left."""
+    if pending:
+        return None
+    return bool(ready)
+
+
 def snapshot(
     config: str | None, project: str, package: str, version: str
 ) -> tuple[list[str], list[str], list[str], list[str]]:
@@ -113,7 +120,6 @@ def download_binaries(
         print("skip:   " + ", ".join(skipped))
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
-        return 1
     if pending or not ready:
         print("obs_wait: binaries for this version are not ready yet", file=sys.stderr)
         return 1
@@ -179,11 +185,11 @@ def main(argv: list[str] | None = None) -> int:
         print("skip:   " + (", ".join(skipped) if skipped else "(none)"))
         if failed:
             print("failed: " + ", ".join(failed), file=sys.stderr)
-            return 1
-        if not pending and ready:
+        outcome = finished_ok(pending, ready)
+        if outcome is True:
             print("obs_wait: versioned binaries are ready")
             return 0
-        if not pending and not ready:
+        if outcome is False:
             print("obs_wait: no repositories produced versioned binaries", file=sys.stderr)
             return 1
         if time.monotonic() >= deadline:

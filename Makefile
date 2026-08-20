@@ -296,7 +296,9 @@ vendor:
 # absolute -f path. Packing the live checkout lets GNU tar exit 1 ("file
 # changed as we read it") after cargo vendor, and a relative -f can land
 # the archive inside the tree instead of the parent the release workflow
-# copies from.
+# copies from. Keep packaging metadata in Source0: OBS %check runs
+# `make test`, which reads $(NAME).changes, $(NAME).spec, and debian/.
+# OBS still builds from the spec/debian.* committed next to Source0.
 dist: vendor
 	@set -eu; \
 	parent="$(abspath $(CURDIR)/..)"; \
@@ -305,11 +307,9 @@ dist: vendor
 	trap 'rm -rf "$$snap"; rm -f "$$out"' EXIT; \
 	cp -a "$(CURDIR)" "$$snap/$(NAME)"; \
 	rm -rf "$$snap/$(NAME)/target" "$$snap/$(NAME)/.git" \
-	  "$$snap/$(NAME)/.osc" "$$snap/$(NAME)/debian" \
+	  "$$snap/$(NAME)/.osc" \
 	  "$$snap/$(NAME)/.cargo-home"; \
-	rm -f "$$snap/$(NAME)/"*.tar.xz \
-	  "$$snap/$(NAME)/$(NAME).spec" \
-	  "$$snap/$(NAME)/$(NAME).changes"; \
+	rm -f "$$snap/$(NAME)/"*.tar.xz; \
 	tar -C "$$snap" --exclude=__pycache__ --exclude='*.pyc' -cJf "$$out" \
 	  --transform 's,^$(NAME),$(NAME)-$(VERSION),' \
 	  $(NAME); \

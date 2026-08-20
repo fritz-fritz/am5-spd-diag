@@ -155,14 +155,23 @@ def write_outputs(debian_text: str, spec_text: str) -> None:
     SPEC_PATH.write_text(spec_text, encoding="utf-8")
 
 
-def check_outputs(debian_text: str, spec_text: str) -> list[str]:
+def debian_check_paths(root: Path = ROOT) -> list[Path]:
+    """debian/ may be absent from Source0; only require debian/changelog in a git tree."""
+    paths = [root / "debian.changelog"]
+    if (root / "debian").is_dir():
+        paths.append(root / "debian" / "changelog")
+    return paths
+
+
+def check_outputs(debian_text: str, spec_text: str, *, root: Path = ROOT) -> list[str]:
     errors: list[str] = []
-    for path in DEBIAN_CHANGELOGS:
+    for path in debian_check_paths(root):
         current = path.read_text(encoding="utf-8") if path.exists() else ""
         if current != debian_text:
-            errors.append(f"{path.relative_to(ROOT)} is stale; run python3 scripts/gen_changelogs.py")
-    if SPEC_PATH.read_text(encoding="utf-8") != spec_text:
-        errors.append(f"{SPEC_PATH.name} %changelog is stale; run python3 scripts/gen_changelogs.py")
+            errors.append(f"{path.relative_to(root)} is stale; run python3 scripts/gen_changelogs.py")
+    spec_path = root / SPEC_PATH.name
+    if spec_path.read_text(encoding="utf-8") != spec_text:
+        errors.append(f"{spec_path.name} %changelog is stale; run python3 scripts/gen_changelogs.py")
     return errors
 
 
