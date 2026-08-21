@@ -114,7 +114,7 @@ jobs:
 
   osc-build:
     needs: dist
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
       fail-fast: true
@@ -131,11 +131,13 @@ jobs:
       - name: Install osc
         run: |
           sudo apt-get update
-          sudo apt-get install -y osc obs-build git zstd
-          # Ubuntu 24.04's obs-build (20210120) cannot parse control.tar.zst.
-          sudo rm -rf /opt/obs-build
-          sudo git clone --depth 1 --branch 20260721 \
-            https://github.com/openSUSE/obs-build.git /opt/obs-build
+          sudo apt-get install -y curl ca-certificates gnupg
+          curl -fsSL https://download.opensuse.org/repositories/openSUSE:/Tools/xUbuntu_24.04/Release.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/obs-tools.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/obs-tools.gpg] https://download.opensuse.org/repositories/openSUSE:/Tools/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/obs-tools.list
+          sudo apt-get update
+          sudo apt-get install -y osc obs-build zstd
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:

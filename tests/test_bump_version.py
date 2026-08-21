@@ -475,7 +475,8 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "/opt/obs-build/build" in (ROOT / "scripts" / "obs_build_cmd.sh").read_text(
         encoding="utf-8"
     )
-    assert "20260721" in ci
+    assert "openSUSE:/Tools/xUbuntu_24.04" in ci
+    assert "ubuntu-24.04" in ci
     assert not re.search(r"^\s*osc(\s+-c\s+\S+)?\s+commit\b", osc_build, re.MULTILINE)
     assert "package-ecosystem: rust-toolchain" in (
         ROOT / ".github/dependabot.yml"
