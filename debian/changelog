@@ -1,5 +1,7 @@
-am5-spd-diag (1.0.4-1) unstable; urgency=medium
+am5-spd-diag (1.0.5-1) unstable; urgency=medium
 
+  * Bump the package to 1.0.5 so the v1.0.5 tag matches Cargo, RPM, and
+    Debian metadata.
   * Enable the capture units on package install (systemd preset; distro
     defaults are disable *) and disable/stop them on uninstall. Drop
     addFilter() for Factory polkit checks (BlockedFilters, unused on src)
@@ -66,4 +68,4 @@ am5-spd-diag (1.0.4-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Thu, 20 Aug 2026 20:15:00 +0000
+ -- Fritz <code@fritztech.net>  Fri, 21 Aug 2026 06:08:39 +0000
