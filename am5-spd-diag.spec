@@ -82,6 +82,9 @@ export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_build test
 
+# %service_add_post / %systemd_post run `systemctl preset`. Distro defaults
+# are `disable *`; 50-am5-spd-diag.preset enables these units on install.
+# %service_del_preun disables and stops them on uninstall (not upgrade).
 %pre
 %if 0%{?suse_version}
 %service_add_pre am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
@@ -89,15 +92,38 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %{?systemd_pre:%systemd_pre am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service}
 %endif
 
-%preun
-%systemd_preun am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
-
 %post
 %tmpfiles_create %{_tmpfilesdir}/am5-spd-diag.conf
+%if 0%{?suse_version}
+%service_add_post am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
+%else
 %systemd_post am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
+%endif
+# 1.0.4 shipped the units without a vendor preset, so upgrades skip
+# %service_add_post's preset. Re-apply vendor policy (enable).
+if [ -x /usr/bin/systemctl ]; then
+  /usr/bin/systemctl --no-reload preset \
+    am5-spd-diag.service \
+    am5-spd-diag-pre-sleep.service \
+    am5-spd-diag-post-sleep.service \
+    >/dev/null 2>&1 || :
+fi
+
+%preun
+%if 0%{?suse_version}
+%service_del_preun am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
+%else
+%systemd_preun am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
+%endif
 
 %postun
+%if 0%{?suse_version}
+%service_del_postun_without_restart am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
+%service_del_postun am5-spd-diag.service
+%else
+%systemd_postun am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
 %systemd_postun_with_restart am5-spd-diag.service
+%endif
 
 %files
 %dir %{_docdir}/%{name}
@@ -125,6 +151,7 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %{_unitdir}/am5-spd-diag.service
 %{_unitdir}/am5-spd-diag-pre-sleep.service
 %{_unitdir}/am5-spd-diag-post-sleep.service
+%{_prefix}/lib/systemd/system-preset/50-%{name}.preset
 # systemd does not own this directory on openSUSE; post-build-checks requires it.
 %dir %{_prefix}/lib/systemd/system-sleep
 %{_prefix}/lib/systemd/system-sleep/%{name}
@@ -133,6 +160,12 @@ export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %config(noreplace) %{_sysconfdir}/am5-spd-diag.conf
 
 %changelog
+* Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.4
+- Enable the capture units on package install (systemd preset; distro
+  defaults are disable *) and disable/stop them on uninstall. Drop
+  addFilter() for Factory polkit checks (BlockedFilters, unused on src) and
+  zero their rpmlint badness instead.
+
 * Thu Aug 20 2026 Fritz <code@fritztech.net> - 1.0.4
 - Stop hardlinking pkexec helpers across /usr/bin and /usr/libexec (openSUSE
   rpmlint hardlink-across-partition). Keep one inode in libexec and a bindir

@@ -1,0 +1,4 @@
+# Capture units must run after install. Distro defaults are `disable *`.
+enable am5-spd-diag.service
+enable am5-spd-diag-pre-sleep.service
+enable am5-spd-diag-post-sleep.service

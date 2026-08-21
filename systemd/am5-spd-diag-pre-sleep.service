@@ -1,6 +1,6 @@
 [Unit]
 Description=Capture AM5 DIMM/SPD evidence before system sleep
-Documentation=file:///usr/share/doc/am5-spd-diag/README.md
+Documentation=man:am5-spd-diag(1)
 DefaultDependencies=no
 Before=sleep.target
 RequiresMountsFor=/var/log
