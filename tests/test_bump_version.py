@@ -546,24 +546,38 @@ def test_obs_build_cmd_preinstalls_shadow() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "rpmlist"
         path.write_text(rpmlist, encoding="utf-8")
+        path.chmod(0o444)
+        fake = Path(tmp) / "fake-build"
+        args_file = Path(tmp) / "args"
+        fake.write_text(
+            "#!/bin/bash\nprintf '%s\\n' \"$@\" > \"$OBS_BUILD_ARGS\"\n",
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
         env = os.environ.copy()
-        env["OBS_BUILD_REAL"] = "/bin/true"
+        env["OBS_BUILD_REAL"] = str(fake)
+        env["OBS_BUILD_ARGS"] = str(args_file)
         subprocess.check_call(
             ["bash", str(wrapper), f"--rpmlist={path}"], env=env
         )
-        text = path.read_text(encoding="utf-8")
-        assert "preinstall: filesystem shadow" in text
+        assert path.read_text(encoding="utf-8") == rpmlist
+        passed = args_file.read_text(encoding="utf-8").strip()
+        assert passed.startswith("--rpmlist=")
+        patched = Path(passed.split("=", 1)[1])
+        assert patched != path
+        assert "preinstall: filesystem shadow" in patched.read_text(encoding="utf-8")
         deb = Path(tmp) / "deb-rpmlist"
         deb.write_text(
             "libc6 /cache/libc6.deb\npreinstall: build-essential\n",
             encoding="utf-8",
         )
+        deb.chmod(0o444)
         subprocess.check_call(
             ["bash", str(wrapper), f"--rpmlist={deb}"], env=env
         )
-        deb_text = deb.read_text(encoding="utf-8")
-        assert "preinstall: build-essential" in deb_text
-        assert "shadow" not in deb_text.split("preinstall:", 1)[1]
+        assert "preinstall: build-essential" in deb.read_text(encoding="utf-8")
+        passed_deb = args_file.read_text(encoding="utf-8").strip()
+        assert passed_deb == f"--rpmlist={deb}"
 
 
 def test_release_profile_and_rpmlint() -> None:

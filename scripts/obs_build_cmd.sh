@@ -4,24 +4,28 @@
 # shadow; rpm --nodeps ignores Requires(pre): useradd, so %prein dies with
 # "neither useradd nor busybox found". OBS kvm uses a preinstall image;
 # GitHub's --vm-type=chroot does not.
+#
+# osc's rpmlist is a 0600 tempfile in sticky /tmp. sudo/build cannot rewrite
+# it (PermissionError), so patch a copy we own and pass that path through.
 set -euo pipefail
 
 REAL=${OBS_BUILD_REAL:-/usr/bin/build}
 
-patch_rpmlist() {
-	local file=$1
-	python3 - "$file" <<'PY'
+patched_rpmlist() {
+	python3 - "$1" <<'PY'
+import os
 import pathlib
 import sys
+import tempfile
 
-path = pathlib.Path(sys.argv[1])
-lines = path.read_text(encoding="utf-8").splitlines(True)
+src = pathlib.Path(sys.argv[1])
+lines = src.read_text(encoding="utf-8").splitlines(True)
 has_shadow = False
 for line in lines:
     stripped = line.strip()
     if not stripped or stripped.startswith("#"):
         continue
-    key, _, rest = stripped.partition(":")
+    key, _, _rest = stripped.partition(":")
     if key in {
         "preinstall",
         "vminstall",
@@ -47,16 +51,27 @@ for line in lines:
             names.append("shadow")
         line = "preinstall: " + " ".join(names) + "\n"
     out.append(line)
-path.write_text("".join(out), encoding="utf-8")
+fd, name = tempfile.mkstemp(prefix="rpmlist-patched.")
+try:
+    os.write(fd, "".join(out).encode("utf-8"))
+finally:
+    os.close(fd)
+print(name)
 PY
 }
 
+args=()
 for arg in "$@"; do
 	case "$arg" in
 	--rpmlist=*)
-		patch_rpmlist "${arg#--rpmlist=}"
+		src=${arg#--rpmlist=}
+		out=$(patched_rpmlist "$src")
+		if [ -n "$out" ]; then
+			arg="--rpmlist=$out"
+		fi
 		;;
 	esac
+	args+=("$arg")
 done
 
-exec "$REAL" "$@"
+exec "$REAL" "${args[@]}"
