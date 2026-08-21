@@ -1,4 +1,10 @@
 -------------------------------------------------------------------
+Fri Aug 21 06:37:44 UTC 2026 - Fritz <code@fritztech.net>
+
+- Stop expanding systemd RPM macros in spec comments so openSUSE rpmbuild
+  can parse the spec (unknown option x in service_add_post).
+
+-------------------------------------------------------------------
 Fri Aug 21 06:08:39 UTC 2026 - Fritz <code@fritztech.net>
 
 - Bump the package to 1.0.5 so the v1.0.5 tag matches Cargo, RPM, and Debian

@@ -453,6 +453,14 @@ def test_release_profile_and_rpmlint() -> None:
         assert unit in spec
     assert "%{_prefix}/lib/systemd/system-preset/50-%{name}.preset" in spec
     assert "systemctl --no-reload preset" in spec
+    for i, line in enumerate(spec.splitlines(), 1):
+        stripped = line.lstrip()
+        if not stripped.startswith("#"):
+            continue
+        if re.search(r"(?<!%)%(service_|systemd_)", stripped.replace("%%", "\0")):
+            raise AssertionError(
+                f"am5-spd-diag.spec:{i}: unescaped systemd macro in comment: {line}"
+            )
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "ln -f $(DESTDIR)$(LIBEXECDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" in makefile
     assert "ln -sf ../libexec/$(NAME)/$(NAME) $(DESTDIR)$(BINDIR)/$(NAME)" in makefile

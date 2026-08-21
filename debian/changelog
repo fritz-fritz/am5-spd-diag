@@ -1,5 +1,7 @@
-am5-spd-diag (1.0.5-1) unstable; urgency=medium
+am5-spd-diag (1.0.6-1) unstable; urgency=medium
 
+  * Stop expanding systemd RPM macros in spec comments so openSUSE rpmbuild
+    can parse the spec (unknown option x in service_add_post).
   * Bump the package to 1.0.5 so the v1.0.5 tag matches Cargo, RPM, and
     Debian metadata.
   * Enable the capture units on package install (systemd preset; distro
@@ -68,4 +70,4 @@ am5-spd-diag (1.0.5-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Fri, 21 Aug 2026 06:08:39 +0000
+ -- Fritz <code@fritztech.net>  Fri, 21 Aug 2026 06:37:44 +0000
