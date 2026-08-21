@@ -1,4 +1,10 @@
 -------------------------------------------------------------------
+Fri Aug 21 06:08:39 UTC 2026 - Fritz <code@fritztech.net>
+
+- Bump the package to 1.0.5 so the v1.0.5 tag matches Cargo, RPM, and Debian
+  metadata.
+
+-------------------------------------------------------------------
 Thu Aug 20 20:15:00 UTC 2026 - Fritz <code@fritztech.net>
 
 - Enable the capture units on package install (systemd preset; distro

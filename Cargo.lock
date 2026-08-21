@@ -19,7 +19,7 @@ dependencies = [
 
 [[package]]
 name = "am5-spd-diag"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "chrono",
  "flate2",
@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "am5-spd-diag-notify"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "am5-spd-diag",
  "gdk4-wayland",
