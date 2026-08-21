@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      DIST_PARENT: ${{ runner.temp }}/osc-dist
+      DIST_PARENT: ${{ github.workspace }}/osc-dist
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -116,9 +116,9 @@ jobs:
           - Debian_13
           - Debian_12
     env:
-      DIST_PARENT: ${{ runner.temp }}/osc-dist
-      OSC_WC: ${{ runner.temp }}/osc-wc
-      OSC_RC: ${{ runner.temp }}/oscrc
+      DIST_PARENT: ${{ github.workspace }}/osc-dist
+      OSC_WC: ${{ github.workspace }}/osc-wc
+      OSC_RC: ${{ github.workspace }}/oscrc
       OSC_VM_TYPE: chroot
       OSC_PRELOAD: "0"
     steps:
