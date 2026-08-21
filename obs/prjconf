@@ -1,3 +1,9 @@
+# Leap/SLFO chroot installs dbus-1-common before shadow. rpm --nodeps
+# ignores Requires(pre): useradd, so put useradd in the preinstall set.
+%if 0%{?suse_version}
+Preinstall: shadow
+%endif
+
 # Resolve Debian virtual-package "have choice" so Testing/13 can build.
 Prefer: libselinux-dev
 Prefer: libselinux1-dev

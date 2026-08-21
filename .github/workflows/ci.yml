@@ -147,6 +147,7 @@ jobs:
             echo '[general]'
             echo 'apiurl = https://api.opensuse.org'
             echo 'su-wrapper = sudo'
+            echo "build-cmd = ${GITHUB_WORKSPACE}/scripts/obs_build_cmd.sh"
             if [ -n "$OBS_USER" ] && [ -n "$OBS_PASSWORD" ]; then
               echo '[https://api.opensuse.org]'
               echo "user = $OBS_USER"

@@ -9,6 +9,8 @@
 #   OSC_VM_TYPE=chroot OSC_PRELOAD=0 scripts/osc_build.sh xUbuntu_24.10
 #
 # Do not osc commit from CI. Optional OSC_RC is an oscrc (API auth only).
+# When OSC_RC is set, point build-cmd at obs_build_cmd.sh so Leap 16 chroots
+# preinstall shadow (useradd) before dbus-1-common.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,6 +33,10 @@ osc() {
 	fi
 	env -u APPIMAGE -u OWD "${cmd[@]}" "$@"
 }
+
+if [ -n "${OSC_RC:-}" ] && ! grep -q '^build-cmd[[:space:]]*=' "$OSC_RC"; then
+	printf 'build-cmd = %s\n' "$ROOT/scripts/obs_build_cmd.sh" >> "$OSC_RC"
+fi
 
 VERSION=$(awk '/^VERSION/{print $3; exit}' "$ROOT/Makefile")
 if [ -z "$VERSION" ]; then

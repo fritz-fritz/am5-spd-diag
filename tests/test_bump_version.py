@@ -2,6 +2,7 @@
 """Package version bump patches Cargo, packaging, man, and OBS .changes."""
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -462,10 +463,12 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "OSC_VM_TYPE: chroot" in ci
     assert "OSC_PRELOAD" in ci
     assert "scripts/osc_build.sh" in ci
+    assert "obs_build_cmd.sh" in ci
     assert not re.search(r"^\s+osc(\s+-c\s+\S+)?\s+commit\b", ci, re.MULTILINE)
     osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
     assert "OSC_VM_TYPE" in osc_build
     assert "OSC_PRELOAD" in osc_build
+    assert "obs_build_cmd.sh" in osc_build
     assert not re.search(r"^\s*osc(\s+-c\s+\S+)?\s+commit\b", osc_build, re.MULTILINE)
     assert "package-ecosystem: rust-toolchain" in (
         ROOT / ".github/dependabot.yml"
@@ -524,8 +527,43 @@ def test_obs_package_meta_disables_unwanted_repos() -> None:
     prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
     assert "Prefer: libselinux-dev" in prjconf
     assert "Prefer: libjpeg-dev" in prjconf
+    assert "%if 0%{?suse_version}" in prjconf
+    assert "Preinstall: shadow" in prjconf
     fmt = (ROOT / "debian/source/format").read_text(encoding="utf-8").strip()
     assert fmt == "1.0", fmt
+
+
+def test_obs_build_cmd_preinstalls_shadow() -> None:
+    wrapper = ROOT / "scripts" / "obs_build_cmd.sh"
+    rpmlist = (
+        "filesystem /cache/filesystem.rpm\n"
+        "dbus-1-common /cache/dbus.rpm\n"
+        "shadow /cache/shadow.rpm\n"
+        "preinstall: filesystem\n"
+        "vminstall: \n"
+        "runscripts: \n"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "rpmlist"
+        path.write_text(rpmlist, encoding="utf-8")
+        env = os.environ.copy()
+        env["OBS_BUILD_REAL"] = "/bin/true"
+        subprocess.check_call(
+            ["bash", str(wrapper), f"--rpmlist={path}"], env=env
+        )
+        text = path.read_text(encoding="utf-8")
+        assert "preinstall: filesystem shadow" in text
+        deb = Path(tmp) / "deb-rpmlist"
+        deb.write_text(
+            "libc6 /cache/libc6.deb\npreinstall: build-essential\n",
+            encoding="utf-8",
+        )
+        subprocess.check_call(
+            ["bash", str(wrapper), f"--rpmlist={deb}"], env=env
+        )
+        deb_text = deb.read_text(encoding="utf-8")
+        assert "preinstall: build-essential" in deb_text
+        assert "shadow" not in deb_text.split("preinstall:", 1)[1]
 
 
 def test_release_profile_and_rpmlint() -> None:
