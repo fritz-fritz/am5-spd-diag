@@ -3,8 +3,8 @@
 # Maintainer flow:
 #   1. make bump TO=X.Y.Z MSG='Why this release.'
 #   2. Review the diff (lockfile, changelogs, packaging) and commit.
-#   3. Merge to the default branch (PR CI includes osc-build for OSC_REPOS;
-#      mark that job required in branch protection), then:
+#   3. Merge to the default branch (PR CI aggregator job `ci` is the required
+#      check; it fails unless test, dist, and every osc-build cell passed), then:
 #        git tag vX.Y.Z && git push origin vX.Y.Z
 #
 # Tags that are not ancestors of the default branch (including tags pushed

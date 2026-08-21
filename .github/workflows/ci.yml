@@ -1,6 +1,6 @@
 # CI: host fmt/clippy/make test, then one `osc build` per OSC_REPOS (chroot,
-# no osc commit). Mark the osc-build job required in branch protection so
-# packaging failures block merge before a tag.
+# no osc commit). Branch protection cannot require a matrix as one name; require
+# the `ci` aggregator so every osc-build cell must pass before merge.
 
 name: CI
 
@@ -179,3 +179,22 @@ jobs:
 
       - name: osc build ${{ matrix.repo }}
         run: scripts/osc_build.sh "${{ matrix.repo }}" x86_64
+
+  # GitHub lists each matrix cell as "osc-build (Repo)". Require this job, not
+  # those names: needs.osc-build.result is success only if every cell succeeded.
+  # if: always() so a red/cancelled matrix still reports failure (skipped
+  # required checks do not block merge).
+  ci:
+    if: always()
+    needs: [test, dist, osc-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required jobs passed
+        run: |
+          printf 'test=%s dist=%s osc-build=%s\n' \
+            "${{ needs.test.result }}" \
+            "${{ needs.dist.result }}" \
+            "${{ needs.osc-build.result }}"
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.dist.result }}" = success
+          test "${{ needs.osc-build.result }}" = success

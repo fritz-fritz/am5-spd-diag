@@ -496,6 +496,8 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert len(repos) >= 13
     assert "fail-fast: true" in ci
     assert "fromJSON(needs.dist.outputs.matrix)" in ci
+    assert "needs: [test, dist, osc-build]" in ci
+    assert "if: always()" in ci
     assert "OSC_VM_TYPE: chroot" in ci
     assert "OSC_PRELOAD" in ci
     assert "packagecachedir" in ci
