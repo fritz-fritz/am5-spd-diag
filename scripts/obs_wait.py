@@ -169,13 +169,21 @@ def rebuild_package(
 
 
 def snapshot(
-    config: str | None, project: str, package: str, version: str
+    config: str | None,
+    project: str,
+    package: str,
+    version: str,
+    *,
+    rows: list[tuple[str, str, str]] | None = None,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Classify one `_result` fetch. Pass `rows` so wait/collect share a tick."""
+    if rows is None:
+        rows = results(config, project, package)
     pending: list[str] = []
     failed: list[str] = []
     skipped: list[str] = []
     ready: list[str] = []
-    for repo, arch, code in results(config, project, package):
+    for repo, arch, code in rows:
         label = status_label(repo, arch, code)
         if code in SKIP:
             skipped.append(label)
@@ -207,7 +215,10 @@ def download_binaries(
     version: str,
     dest: str,
 ) -> int:
-    pending, failed, skipped, ready = snapshot(config, project, package, version)
+    rows = results(config, project, package)
+    pending, failed, skipped, ready = snapshot(
+        config, project, package, version, rows=rows
+    )
     if skipped:
         print("skip:   " + ", ".join(skipped))
     if failed:
@@ -216,7 +227,7 @@ def download_binaries(
         print("obs_wait: binaries for this version are not ready yet", file=sys.stderr)
         return 1
     count = 0
-    for repo, arch, code in results(config, project, package):
+    for repo, arch, code in rows:
         if code in SKIP or code in BAD or code not in DONE:
             continue
         names = [
@@ -288,7 +299,11 @@ def main(argv: list[str] | None = None) -> int:
         try:
             rows = results(args.config, args.project, args.package)
             pending, failed, skipped, ready = snapshot(
-                args.config, args.project, args.package, args.version
+                args.config,
+                args.project,
+                args.package,
+                args.version,
+                rows=rows,
             )
         except subprocess.CalledProcessError as err:
             print(f"obs_wait: osc failed: {err}", file=sys.stderr)

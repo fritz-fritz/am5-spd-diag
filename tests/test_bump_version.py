@@ -364,6 +364,42 @@ def test_obs_wait_payload() -> None:
             )
         finally:
             wait.osc_bytes = orig_bytes
+
+        fetches = {"n": 0}
+        seq = [
+            [("xUbuntu_24.10", "x86_64", "failed")],
+            [("xUbuntu_24.10", "x86_64", "succeeded")],
+        ]
+
+        def flipping_results(*_a, **_k):
+            rows = seq[min(fetches["n"], 1)]
+            fetches["n"] += 1
+            return rows
+
+        wait.results = flipping_results
+        wait.binary_names = lambda *_a, **_k: ["am5-spd-diag-1.0.1-0.amd64.deb"]
+        rows = wait.results(None, "home:x", "am5-spd-diag")
+        pending, failed, skipped, ready = wait.snapshot(
+            None, "home:x", "am5-spd-diag", "1.0.1", rows=rows
+        )
+        assert fetches["n"] == 1
+        assert failed == ["xUbuntu_24.10/x86_64: failed"]
+        assert ready == []
+        failed_pairs = [(repo, arch) for repo, arch, code in rows if code in wait.BAD]
+        assert failed_pairs == [("xUbuntu_24.10", "x86_64")]
+        assert wait.maybe_rebuild(
+            failed_pairs,
+            seen_live={("xUbuntu_24.10", "x86_64")},
+            retried=set(),
+            pending=pending,
+            ready=ready,
+        ) == [("xUbuntu_24.10", "x86_64")]
+
+        fetches["n"] = 0
+        wait.results = flipping_results
+        with tempfile.TemporaryDirectory() as dest2:
+            assert wait.download_binaries(None, "home:x", "am5-spd-diag", "1.0.1", dest2) == 1
+            assert fetches["n"] == 1
     finally:
         wait.results = orig_results
         wait.binary_names = orig_names
