@@ -3,7 +3,29 @@
 use crate::paths::{tmpfiles_create_conf, tmpfiles_purge_conf, SYSTEM_STATE_DIR};
 use crate::safe_fs::ensure_dir;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitStatus};
+use std::time::Duration;
+
+/// Overlayfs and some OBS build roots ETXTBSY a binary that was just written.
+fn tmpfiles_status(bin: &Path, flag: &str, conf: &Path) -> Result<ExitStatus, String> {
+    let mut delay = Duration::from_millis(5);
+    let mut last = None;
+    for _ in 0..32 {
+        match Command::new(bin).arg(flag).arg(conf).status() {
+            Ok(status) => return Ok(status),
+            Err(e) if e.raw_os_error() == Some(26) => {
+                last = Some(e);
+                std::thread::sleep(delay);
+                delay = (delay * 2).min(Duration::from_millis(50));
+            }
+            Err(e) => return Err(format!("systemd-tmpfiles {flag}: {e}")),
+        }
+    }
+    Err(format!(
+        "systemd-tmpfiles {flag}: {}",
+        last.expect("ETXTBSY retry")
+    ))
+}
 
 /// How to invoke systemd-tmpfiles for a system-log purge.
 pub struct PurgeSystem {
@@ -30,11 +52,7 @@ pub fn purge_system_state() -> Result<(), String> {
 
 pub fn purge_system_state_with(plan: &PurgeSystem) -> Result<(), String> {
     if plan.remove_conf.is_file() {
-        let status = Command::new(&plan.tmpfiles_bin)
-            .arg("--remove")
-            .arg(&plan.remove_conf)
-            .status()
-            .map_err(|e| format!("systemd-tmpfiles --remove: {e}"))?;
+        let status = tmpfiles_status(&plan.tmpfiles_bin, "--remove", &plan.remove_conf)?;
         if !status.success() {
             return Err(format!(
                 "systemd-tmpfiles --remove {} failed",
@@ -54,11 +72,7 @@ pub fn purge_system_state_with(plan: &PurgeSystem) -> Result<(), String> {
         let _ = std::fs::remove_dir_all(path);
     }
     if plan.create_conf.is_file() {
-        let status = Command::new(&plan.tmpfiles_bin)
-            .arg("--create")
-            .arg(&plan.create_conf)
-            .status()
-            .map_err(|e| format!("systemd-tmpfiles --create: {e}"))?;
+        let status = tmpfiles_status(&plan.tmpfiles_bin, "--create", &plan.create_conf)?;
         if !status.success() {
             return Err(format!(
                 "systemd-tmpfiles --create {} failed",
@@ -85,22 +99,7 @@ pub fn purge_then_user(plan: &PurgeSystem, user_targets: &[PathBuf]) -> Result<(
 mod tests {
     use super::*;
     use std::fs;
-    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
-
-    /// OBS KVM ext3 can ETXTBSY a stub that was just written; sync, then rename.
-    fn write_exec(path: &Path, body: &str) {
-        let tmp = path.with_extension("tmp");
-        {
-            let mut f = fs::File::create(&tmp).unwrap();
-            f.write_all(body.as_bytes()).unwrap();
-            f.sync_all().unwrap();
-        }
-        let mut perms = fs::metadata(&tmp).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&tmp, perms).unwrap();
-        fs::rename(&tmp, path).unwrap();
-    }
 
     #[test]
     fn purge_create_failure_returns_err_and_keeps_user_data() {
@@ -108,11 +107,11 @@ mod tests {
             .prefix("am5-purge-")
             .tempdir()
             .unwrap();
-        let bin = tmp.path().join("systemd-tmpfiles");
-        write_exec(
-            &bin,
-            "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n    --create) exit 1 ;;\n  esac\ndone\nexit 0\n",
-        );
+        let bin =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/tmpfiles-create-fail.sh");
+        let mut exec = fs::metadata(&bin).unwrap().permissions();
+        exec.set_mode(0o755);
+        fs::set_permissions(&bin, exec).unwrap();
         let remove_conf = tmp.path().join("remove.conf");
         let create_conf = tmp.path().join("create.conf");
         fs::write(&remove_conf, "R /var/log/am5-spd-diag\n").unwrap();
@@ -142,8 +141,7 @@ mod tests {
             .prefix("am5-purge-ok-")
             .tempdir()
             .unwrap();
-        let bin = tmp.path().join("systemd-tmpfiles");
-        write_exec(&bin, "#!/bin/sh\nexit 0\n");
+        let bin = PathBuf::from("/bin/true");
         let remove_conf = tmp.path().join("remove.conf");
         let create_conf = tmp.path().join("create.conf");
         fs::write(&remove_conf, "R /var/log/am5-spd-diag\n").unwrap();
