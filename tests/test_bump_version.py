@@ -458,10 +458,12 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "xUbuntu_24.10" in repos
     assert "openSUSE_Tumbleweed" in repos
     assert len(repos) >= 13
-    assert "fail-fast: true" in ci
+    assert "fail-fast:" in ci
     assert "fromJSON(needs.dist.outputs.matrix)" in ci
     assert "OSC_VM_TYPE: chroot" in ci
     assert "OSC_PRELOAD" in ci
+    assert "packagecachedir" in ci
+    assert "OSC_PACKAGE_CACHE_DIR" in ci
     assert "scripts/osc_build.sh" in ci
     assert "obs_build_cmd.sh" in ci
     assert not re.search(r"^\s+osc(\s+-c\s+\S+)?\s+commit\b", ci, re.MULTILINE)
@@ -469,6 +471,8 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "OSC_VM_TYPE" in osc_build
     assert "OSC_PRELOAD" in osc_build
     assert "obs_build_cmd.sh" in osc_build
+    assert '--config "$OSC_RC"' in osc_build
+    assert not re.search(r'cmd\+=\(-c ', osc_build)
     assert "/usr/bin/obs-build" in (ROOT / "scripts" / "obs_build_cmd.sh").read_text(
         encoding="utf-8"
     )

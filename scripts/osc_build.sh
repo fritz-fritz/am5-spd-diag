@@ -29,7 +29,7 @@ osc() {
 	local -a cmd
 	cmd=(/usr/bin/osc)
 	if [ -n "${OSC_RC:-}" ]; then
-		cmd+=(-c "$OSC_RC")
+		cmd+=(--config "$OSC_RC")
 	fi
 	env -u APPIMAGE -u OWD "${cmd[@]}" "$@"
 }

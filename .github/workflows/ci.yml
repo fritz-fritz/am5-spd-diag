@@ -56,7 +56,7 @@ jobs:
         run: make test
 
   # Source0 + vendor + pinned rustc, then one osc build per OBS repo.
-  # Never osc commit. fail-fast cancels remaining cells on the first red.
+  # Never osc commit. fail-fast is off until the matrix is green.
   dist:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -116,8 +116,11 @@ jobs:
     needs: dist
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix: ${{ fromJSON(needs.dist.outputs.matrix) }}
     env:
       DIST_PARENT: ${{ github.workspace }}/osc-dist
@@ -125,6 +128,7 @@ jobs:
       OSC_RC: ${{ github.workspace }}/oscrc
       OSC_VM_TYPE: chroot
       OSC_PRELOAD: "0"
+      OSC_PACKAGE_CACHE_DIR: ${{ github.workspace }}/osc-pkgcache
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -144,16 +148,26 @@ jobs:
           name: osc-sources
           path: ${{ env.DIST_PARENT }}
 
+      - name: Cache osc packagecachedir
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.OSC_PACKAGE_CACHE_DIR }}
+          key: osc-pkg-${{ matrix.repo }}-${{ hashFiles('am5-spd-diag.spec', 'debian.control', 'obs/rust-dist.txt') }}
+          restore-keys: |
+            osc-pkg-${{ matrix.repo }}-
+
       - name: Configure oscrc
         env:
           OBS_USER: ${{ secrets.OBS_USER }}
           OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
         run: |
+          mkdir -p "$OSC_PACKAGE_CACHE_DIR"
           {
             echo '[general]'
             echo 'apiurl = https://api.opensuse.org'
             echo 'su-wrapper = sudo'
             echo "build-cmd = ${GITHUB_WORKSPACE}/scripts/obs_build_cmd.sh"
+            echo "packagecachedir = ${OSC_PACKAGE_CACHE_DIR}"
             if [ -n "$OBS_USER" ] && [ -n "$OBS_PASSWORD" ]; then
               echo '[https://api.opensuse.org]'
               echo "user = $OBS_USER"
