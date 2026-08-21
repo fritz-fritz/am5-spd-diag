@@ -56,7 +56,7 @@ jobs:
         run: make test
 
   # Source0 + vendor + pinned rustc, then one osc build per OBS repo.
-  # Never osc commit. fail-fast is off until the matrix is green.
+  # Never osc commit. fail-fast cancels remaining cells on the first red.
   dist:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -120,7 +120,7 @@ jobs:
       contents: read
       actions: write
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix: ${{ fromJSON(needs.dist.outputs.matrix) }}
     env:
       DIST_PARENT: ${{ github.workspace }}/osc-dist

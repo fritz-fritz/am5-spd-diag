@@ -458,7 +458,7 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "xUbuntu_24.10" in repos
     assert "openSUSE_Tumbleweed" in repos
     assert len(repos) >= 13
-    assert "fail-fast:" in ci
+    assert "fail-fast: true" in ci
     assert "fromJSON(needs.dist.outputs.matrix)" in ci
     assert "OSC_VM_TYPE: chroot" in ci
     assert "OSC_PRELOAD" in ci
