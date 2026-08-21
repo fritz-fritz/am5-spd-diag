@@ -3,7 +3,8 @@
 # Maintainer flow:
 #   1. make bump TO=X.Y.Z MSG='Why this release.'
 #   2. Review the diff (lockfile, changelogs, packaging) and commit.
-#   3. Merge to the default branch, then:
+#   3. Merge to the default branch (PR CI aggregator job `ci` is the required
+#      check; it fails unless test, dist, and every osc-build cell passed), then:
 #        git tag vX.Y.Z && git push origin vX.Y.Z
 #
 # Tags that are not ancestors of the default branch (including tags pushed
@@ -23,8 +24,8 @@
 #
 # Repository secrets:
 #   OBS_USER      OBS account that owns home:fritz-fritz
-#   OBS_PASSWORD  that account's password for osc (commit already queues
-#                 the build; no separate rebuild trigger token)
+#   OBS_PASSWORD  that account's password for osc (commit queues the
+#                 build; obs_wait may rebuildpac a failed repo/arch once)
 #
 # workflow_dispatch of a previous tag checks out that tag. Leave
 # commit_obs off to attach binaries already on OBS. Turn it on to upload

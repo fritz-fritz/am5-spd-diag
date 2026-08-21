@@ -2,7 +2,9 @@
 """Package version bump patches Cargo, packaging, man, and OBS .changes."""
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -237,7 +239,57 @@ def test_obs_wait_payload() -> None:
     assert wait.finished_ok([], ["tw/x86_64: succeeded"]) is True
     assert wait.finished_ok([], []) is False
     assert wait.finished_ok([], [], ["tw/x86_64: failed"]) is None
-    assert wait.finished_ok([], ["tw/x86_64: succeeded"], ["ubuntu/x86_64: failed"]) is True
+    assert wait.finished_ok([], ["tw/x86_64: succeeded"], ["ubuntu/x86_64: failed"]) is None
+    assert (
+        wait.finished_ok(
+            [],
+            ["tw/x86_64: succeeded"],
+            ["ubuntu/x86_64: failed"],
+            retries_exhausted=True,
+        )
+        is False
+    )
+    seen_live: set[tuple[str, str]] = set()
+    retried: set[tuple[str, str]] = set()
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=[],
+        ready=[],
+    ) == []
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=["Fedora_44/x86_64: building"],
+        ready=[],
+    ) == []
+    seen_live.add(("xUbuntu_24.10", "x86_64"))
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=["Fedora_44/x86_64: building"],
+        ready=[],
+    ) == [("xUbuntu_24.10", "x86_64")]
+    retried.add(("xUbuntu_24.10", "x86_64"))
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=[],
+        ready=["Fedora_44/x86_64: succeeded"],
+    ) == []
+    retried.clear()
+    seen_live.clear()
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=[],
+        ready=["Fedora_44/x86_64: succeeded"],
+    ) == [("xUbuntu_24.10", "x86_64")]
     assert wait.collapse_results(
         [
             ("Debian_12", "x86_64", "succeeded"),
@@ -282,6 +334,72 @@ def test_obs_wait_payload() -> None:
         pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
         assert ready == []
         assert pending == ["Fedora_44/x86_64: binaries not listed yet"]
+
+        orig_bytes = wait.osc_bytes
+        api_calls: list[tuple[str, ...]] = []
+
+        def fake_bytes(_config: str | None, *args: str) -> bytes:
+            api_calls.append(args)
+            assert args[0] == "api"
+            assert "getbinaries" not in args
+            return b"rpm-bytes"
+
+        wait.osc_bytes = fake_bytes
+        wait.results = lambda *_a, **_k: [("Fedora_44", "x86_64", "succeeded")]
+        wait.binary_names = lambda *_a, **_k: [
+            "am5-spd-diag-1.0.1-0.x86_64.rpm",
+            "am5-spd-diag-1.0.1-0.src.rpm",
+            "rpmlint.log",
+        ]
+        dest = Path(tempfile.mkdtemp())
+        try:
+            assert wait.download_binaries(None, "home:x", "am5-spd-diag", "1.0.1", str(dest)) == 0
+            rpm = dest / "Fedora_44" / "x86_64" / "am5-spd-diag-1.0.1-0.x86_64.rpm"
+            assert rpm.read_bytes() == b"rpm-bytes"
+            assert not (dest / "Fedora_44" / "x86_64" / "am5-spd-diag-1.0.1-0.src.rpm").exists()
+            assert len(api_calls) == 1
+            assert api_calls[0] == (
+                "api",
+                "/build/home:x/Fedora_44/x86_64/am5-spd-diag/am5-spd-diag-1.0.1-0.x86_64.rpm",
+            )
+        finally:
+            wait.osc_bytes = orig_bytes
+
+        fetches = {"n": 0}
+        seq = [
+            [("xUbuntu_24.10", "x86_64", "failed")],
+            [("xUbuntu_24.10", "x86_64", "succeeded")],
+        ]
+
+        def flipping_results(*_a, **_k):
+            rows = seq[min(fetches["n"], 1)]
+            fetches["n"] += 1
+            return rows
+
+        wait.results = flipping_results
+        wait.binary_names = lambda *_a, **_k: ["am5-spd-diag-1.0.1-0.amd64.deb"]
+        rows = wait.results(None, "home:x", "am5-spd-diag")
+        pending, failed, skipped, ready = wait.snapshot(
+            None, "home:x", "am5-spd-diag", "1.0.1", rows=rows
+        )
+        assert fetches["n"] == 1
+        assert failed == ["xUbuntu_24.10/x86_64: failed"]
+        assert ready == []
+        failed_pairs = [(repo, arch) for repo, arch, code in rows if code in wait.BAD]
+        assert failed_pairs == [("xUbuntu_24.10", "x86_64")]
+        assert wait.maybe_rebuild(
+            failed_pairs,
+            seen_live={("xUbuntu_24.10", "x86_64")},
+            retried=set(),
+            pending=pending,
+            ready=ready,
+        ) == [("xUbuntu_24.10", "x86_64")]
+
+        fetches["n"] = 0
+        wait.results = flipping_results
+        with tempfile.TemporaryDirectory() as dest2:
+            assert wait.download_binaries(None, "home:x", "am5-spd-diag", "1.0.1", dest2) == 1
+            assert fetches["n"] == 1
     finally:
         wait.results = orig_results
         wait.binary_names = orig_names
@@ -368,6 +486,40 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "toolchain: ${{ steps.rust.outputs.version }}" in release
     assert "rust_pin.sh channel" in ci
     assert "rust_pin.sh channel" in release
+    assert "print-osc-repos" in makefile
+    assert "print-osc-repos" in ci
+    repos = subprocess.check_output(
+        ["make", "-s", "print-osc-repos"], cwd=ROOT, text=True
+    ).split()
+    assert "xUbuntu_24.10" in repos
+    assert "openSUSE_Tumbleweed" in repos
+    assert len(repos) >= 13
+    assert "fail-fast: true" in ci
+    assert "fromJSON(needs.dist.outputs.matrix)" in ci
+    assert "needs: [test, dist, osc-build]" in ci
+    assert "if: always()" in ci
+    assert "OSC_VM_TYPE: chroot" in ci
+    assert "OSC_PRELOAD" in ci
+    assert "packagecachedir" in ci
+    assert "OSC_PACKAGE_CACHE_DIR" in ci
+    assert "scripts/osc_build.sh" in ci
+    assert "obs_build_cmd.sh" in ci
+    assert not re.search(r"^\s+osc(\s+-c\s+\S+)?\s+commit\b", ci, re.MULTILINE)
+    osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
+    assert "OSC_VM_TYPE" in osc_build
+    assert "OSC_PRELOAD" in osc_build
+    assert "obs_build_cmd.sh" in osc_build
+    assert '--config "$OSC_RC"' in osc_build
+    assert not re.search(r'cmd\+=\(-c ', osc_build)
+    assert "/usr/bin/obs-build" in (ROOT / "scripts" / "obs_build_cmd.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "/opt/obs-build/build" in (ROOT / "scripts" / "obs_build_cmd.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "openSUSE:/Tools/xUbuntu_24.04" in ci
+    assert "ubuntu-24.04" in ci
+    assert not re.search(r"^\s*osc(\s+-c\s+\S+)?\s+commit\b", osc_build, re.MULTILINE)
     assert "package-ecosystem: rust-toolchain" in (
         ROOT / ".github/dependabot.yml"
     ).read_text(encoding="utf-8")
@@ -425,8 +577,67 @@ def test_obs_package_meta_disables_unwanted_repos() -> None:
     prjconf = (ROOT / "obs/prjconf").read_text(encoding="utf-8")
     assert "Prefer: libselinux-dev" in prjconf
     assert "Prefer: libjpeg-dev" in prjconf
+    assert "%if 0%{?suse_version}" in prjconf
+    assert "Preinstall: shadow" in prjconf
     fmt = (ROOT / "debian/source/format").read_text(encoding="utf-8").strip()
     assert fmt == "1.0", fmt
+
+
+def test_obs_build_cmd_preinstalls_shadow() -> None:
+    wrapper = ROOT / "scripts" / "obs_build_cmd.sh"
+    rpmlist = (
+        "filesystem /cache/filesystem.rpm\n"
+        "dbus-1-common /cache/dbus.rpm\n"
+        "shadow /cache/shadow.rpm\n"
+        "preinstall: filesystem\n"
+        "vminstall: \n"
+        "runscripts: \n"
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "rpmlist"
+        path.write_text(rpmlist, encoding="utf-8")
+        path.chmod(0o444)
+        fake = Path(tmp) / "fake-build"
+        args_file = Path(tmp) / "args"
+        fake.write_text(
+            "#!/bin/bash\nprintf '%s\\n' \"$@\" > \"$OBS_BUILD_ARGS\"\n",
+            encoding="utf-8",
+        )
+        fake.chmod(0o755)
+        env = os.environ.copy()
+        env["OBS_BUILD_REAL"] = str(fake)
+        env["OBS_BUILD_ARGS"] = str(args_file)
+        subprocess.check_call(
+            ["bash", str(wrapper), f"--rpmlist={path}"], env=env
+        )
+        assert path.read_text(encoding="utf-8") == rpmlist
+        passed = args_file.read_text(encoding="utf-8").strip()
+        assert passed.startswith("--rpmlist=")
+        patched = Path(passed.split("=", 1)[1])
+        assert patched != path
+        assert "preinstall: filesystem shadow" in patched.read_text(encoding="utf-8")
+        env_miss = os.environ.copy()
+        env_miss["OBS_BUILD_REAL"] = str(Path(tmp) / "no-such-build")
+        proc = subprocess.run(
+            ["bash", str(wrapper), f"--rpmlist={path}"],
+            env=env_miss,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode != 0
+        assert "not executable" in proc.stderr
+        deb = Path(tmp) / "deb-rpmlist"
+        deb.write_text(
+            "libc6 /cache/libc6.deb\npreinstall: build-essential\n",
+            encoding="utf-8",
+        )
+        deb.chmod(0o444)
+        subprocess.check_call(
+            ["bash", str(wrapper), f"--rpmlist={deb}"], env=env
+        )
+        assert "preinstall: build-essential" in deb.read_text(encoding="utf-8")
+        passed_deb = args_file.read_text(encoding="utf-8").strip()
+        assert passed_deb == f"--rpmlist={deb}"
 
 
 def test_release_profile_and_rpmlint() -> None:

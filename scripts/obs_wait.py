@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Wait until OBS has versioned binaries. Sibling repo failures are skipped."""
+"""Wait until OBS has versioned binaries for every enabled repo."""
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -26,6 +27,14 @@ def osc(config: str | None, *args: str) -> str:
         cmd.extend(["-c", config])
     cmd.extend(args)
     return subprocess.check_output(cmd, text=True)
+
+
+def osc_bytes(config: str | None, *args: str) -> bytes:
+    cmd = ["osc"]
+    if config:
+        cmd.extend(["-c", config])
+    cmd.extend(args)
+    return subprocess.check_output(cmd)
 
 
 def results(config: str | None, project: str, package: str) -> list[tuple[str, str, str]]:
@@ -115,30 +124,66 @@ def finished_ok(
     pending: list[str],
     ready: list[str],
     failed: list[str] | None = None,
+    *,
+    retries_exhausted: bool = False,
 ) -> bool | None:
-    """None = keep polling. True = versioned payloads exist. False = give up.
+    """None = keep polling. True = every enabled repo has a payload. False = give up.
 
-    Stale ``failed`` rows after ``osc commit`` must not abort: OBS often has
-    not scheduled the rebuild yet. Keep polling until a live code appears,
-    a payload shows up, or the timeout hits.
+    Remaining ``failed`` is never success. Stale failed rows after ``osc commit``
+    keep polling until OBS schedules the new build, a retry runs, or timeout.
+    After each failed target has used its one rebuild and is still failed,
+    return False so Release does not collect an incomplete set.
     """
     if pending:
         return None
+    if failed:
+        return False if retries_exhausted else None
     if ready:
         return True
-    if failed:
-        return None
     return False
 
 
+def maybe_rebuild(
+    failed_targets: list[tuple[str, str]],
+    *,
+    seen_live: set[tuple[str, str]],
+    retried: set[tuple[str, str]],
+    pending: list[str],
+    ready: list[str],
+) -> list[tuple[str, str]]:
+    """(repo, arch) pairs to rebuild this tick. At most one rebuild per pair ever."""
+    wave_done = not pending and bool(ready)
+    out: list[tuple[str, str]] = []
+    for pair in failed_targets:
+        if pair in retried:
+            continue
+        if pair in seen_live or wave_done:
+            out.append(pair)
+    return out
+
+
+def rebuild_package(
+    config: str | None, project: str, package: str, repo: str, arch: str
+) -> None:
+    osc(config, "rebuildpac", project, package, "-r", repo, "-a", arch)
+
+
 def snapshot(
-    config: str | None, project: str, package: str, version: str
+    config: str | None,
+    project: str,
+    package: str,
+    version: str,
+    *,
+    rows: list[tuple[str, str, str]] | None = None,
 ) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Classify one `_result` fetch. Pass `rows` so wait/collect share a tick."""
+    if rows is None:
+        rows = results(config, project, package)
     pending: list[str] = []
     failed: list[str] = []
     skipped: list[str] = []
     ready: list[str] = []
-    for repo, arch, code in results(config, project, package):
+    for repo, arch, code in rows:
         label = status_label(repo, arch, code)
         if code in SKIP:
             skipped.append(label)
@@ -170,31 +215,42 @@ def download_binaries(
     version: str,
     dest: str,
 ) -> int:
-    pending, failed, skipped, ready = snapshot(config, project, package, version)
+    rows = results(config, project, package)
+    pending, failed, skipped, ready = snapshot(
+        config, project, package, version, rows=rows
+    )
     if skipped:
         print("skip:   " + ", ".join(skipped))
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
-    if pending or not ready:
+    if pending or failed or not ready:
         print("obs_wait: binaries for this version are not ready yet", file=sys.stderr)
         return 1
     count = 0
-    for repo, arch, code in results(config, project, package):
+    for repo, arch, code in rows:
         if code in SKIP or code in BAD or code not in DONE:
             continue
-        names = binary_names(config, project, package, repo, arch)
-        if not any(is_payload(name, version) for name in names):
+        names = [
+            name
+            for name in binary_names(config, project, package, repo, arch)
+            if is_payload(name, version)
+        ]
+        if not names:
             continue
         target = f"{dest.rstrip('/')}/{repo}/{arch}"
-        subprocess.check_call(["mkdir", "-p", target])
-        cmd = ["osc"]
-        if config:
-            cmd.extend(["-c", config])
-        cmd.extend(["getbinaries", project, package, repo, arch, "-d", target])
+        os.makedirs(target, exist_ok=True)
         print(f"collect: {repo}/{arch} -> {target}", flush=True)
-        subprocess.check_call(cmd)
+        for name in names:
+            path = os.path.join(target, name)
+            data = osc_bytes(
+                config,
+                "api",
+                f"/build/{project}/{repo}/{arch}/{package}/{name}",
+            )
+            with open(path, "wb") as fh:
+                fh.write(data)
+            print(f"downloaded {repo}/{arch}/{name}", flush=True)
         count += 1
-        print(f"downloaded {repo}/{arch}", flush=True)
     if count == 0:
         print("obs_wait: no repositories to download", file=sys.stderr)
         return 1
@@ -212,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--getbinaries",
         metavar="DIR",
-        help="download versioned binaries to DIR instead of waiting",
+        help="download versioned rpm/deb payloads to DIR instead of waiting",
     )
     parser.add_argument(
         "--asset-name",
@@ -236,10 +292,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     deadline = time.monotonic() + args.timeout
+    seen_live: set[tuple[str, str]] = set()
+    retried: set[tuple[str, str]] = set()
+    awaiting_schedule: set[tuple[str, str]] = set()
     while True:
         try:
+            rows = results(args.config, args.project, args.package)
             pending, failed, skipped, ready = snapshot(
-                args.config, args.project, args.package, args.version
+                args.config,
+                args.project,
+                args.package,
+                args.version,
+                rows=rows,
             )
         except subprocess.CalledProcessError as err:
             print(f"obs_wait: osc failed: {err}", file=sys.stderr)
@@ -247,12 +311,49 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             time.sleep(args.interval)
             continue
+        for repo, arch, code in rows:
+            pair = (repo, arch)
+            if code in LIVE:
+                seen_live.add(pair)
+                awaiting_schedule.discard(pair)
+        failed_pairs = [(repo, arch) for repo, arch, code in rows if code in BAD]
+        to_retry = maybe_rebuild(
+            failed_pairs,
+            seen_live=seen_live,
+            retried=retried,
+            pending=pending,
+            ready=ready,
+        )
         print("ready:  " + (", ".join(ready) if ready else "(none)"))
         print("wait:   " + (", ".join(pending) if pending else "(none)"))
         print("skip:   " + (", ".join(skipped) if skipped else "(none)"))
         if failed:
             print("failed: " + ", ".join(failed), file=sys.stderr)
-        outcome = finished_ok(pending, ready, failed)
+        if to_retry:
+            for repo, arch in to_retry:
+                print(f"obs_wait: retry {repo}/{arch} (once)", flush=True)
+                try:
+                    rebuild_package(
+                        args.config, args.project, args.package, repo, arch
+                    )
+                except subprocess.CalledProcessError as err:
+                    print(f"obs_wait: rebuild {repo}/{arch} failed: {err}", file=sys.stderr)
+                    return 1
+                retried.add((repo, arch))
+                awaiting_schedule.add((repo, arch))
+            if time.monotonic() >= deadline:
+                print("obs_wait: timed out waiting for OBS binaries", file=sys.stderr)
+                return 1
+            time.sleep(args.interval)
+            continue
+        retries_exhausted = (
+            bool(failed_pairs)
+            and not awaiting_schedule
+            and all(pair in retried for pair in failed_pairs)
+        )
+        outcome = finished_ok(
+            pending, ready, failed, retries_exhausted=retries_exhausted
+        )
         if outcome is True:
             print("obs_wait: versioned binaries are ready")
             return 0

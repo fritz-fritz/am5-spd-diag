@@ -1,3 +1,7 @@
+# CI: host fmt/clippy/make test, then one `osc build` per OSC_REPOS (chroot,
+# no osc commit). Branch protection cannot require a matrix as one name; require
+# the `ci` aggregator so every osc-build cell must pass before merge.
+
 name: CI
 
 on:
@@ -50,3 +54,147 @@ jobs:
 
       - name: Test
         run: make test
+
+  # Source0 + vendor + pinned rustc, then one osc build per OBS repo.
+  # Never osc commit. fail-fast cancels remaining cells on the first red.
+  dist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DIST_PARENT: ${{ github.workspace }}/osc-dist
+    outputs:
+      matrix: ${{ steps.repos.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: OSC_REPOS matrix
+        id: repos
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          repos = subprocess.check_output(
+              ["make", "-s", "print-osc-repos"], text=True
+          ).split()
+          if not repos:
+              raise SystemExit("print-osc-repos produced no repos")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("matrix<<EOF\n")
+              fh.write(json.dumps({"repo": repos}))
+              fh.write("\nEOF\n")
+          PY
+
+      - name: Read rustc pin
+        id: rust
+        run: |
+          mkdir -p "$DIST_PARENT"
+          echo "version=$(scripts/rust_pin.sh channel)" >> "$GITHUB_OUTPUT"
+          echo "file=$(scripts/rust_pin.sh file)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+
+      - name: Cache pinned rustc tarball
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.DIST_PARENT }}/${{ steps.rust.outputs.file }}
+          key: rustc-${{ hashFiles('obs/rust-dist.txt') }}
+
+      - name: Dist sources
+        run: |
+          make dist
+          make osc-fetch-rust
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: osc-sources
+          path: ${{ env.DIST_PARENT }}
+          if-no-files-found: error
+          retention-days: 1
+
+  osc-build:
+    needs: dist
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.dist.outputs.matrix) }}
+    env:
+      DIST_PARENT: ${{ github.workspace }}/osc-dist
+      OSC_WC: ${{ github.workspace }}/osc-wc
+      OSC_RC: ${{ github.workspace }}/oscrc
+      OSC_VM_TYPE: chroot
+      OSC_PRELOAD: "0"
+      OSC_PACKAGE_CACHE_DIR: ${{ github.workspace }}/osc-pkgcache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install osc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates gnupg
+          curl -fsSL https://download.opensuse.org/repositories/openSUSE:/Tools/xUbuntu_24.04/Release.key \
+            | sudo gpg --dearmor -o /usr/share/keyrings/obs-tools.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/obs-tools.gpg] https://download.opensuse.org/repositories/openSUSE:/Tools/xUbuntu_24.04/ /' \
+            | sudo tee /etc/apt/sources.list.d/obs-tools.list
+          sudo apt-get update
+          sudo apt-get install -y osc obs-build zstd
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: osc-sources
+          path: ${{ env.DIST_PARENT }}
+
+      - name: Cache osc packagecachedir
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.OSC_PACKAGE_CACHE_DIR }}
+          key: osc-pkg-${{ matrix.repo }}-${{ hashFiles('am5-spd-diag.spec', 'debian.control', 'obs/rust-dist.txt') }}
+          restore-keys: |
+            osc-pkg-${{ matrix.repo }}-
+
+      - name: Configure oscrc
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+        run: |
+          mkdir -p "$OSC_PACKAGE_CACHE_DIR"
+          {
+            echo '[general]'
+            echo 'apiurl = https://api.opensuse.org'
+            echo 'su-wrapper = sudo'
+            echo "build-cmd = ${GITHUB_WORKSPACE}/scripts/obs_build_cmd.sh"
+            echo "packagecachedir = ${OSC_PACKAGE_CACHE_DIR}"
+            if [ -n "$OBS_USER" ] && [ -n "$OBS_PASSWORD" ]; then
+              echo '[https://api.opensuse.org]'
+              echo "user = $OBS_USER"
+              echo "pass = $OBS_PASSWORD"
+              echo 'credentials_mgr_class = osc.credentials.PlaintextConfigFileCredentialsManager'
+            fi
+          } > "$OSC_RC"
+          chmod 600 "$OSC_RC"
+
+      - name: osc build ${{ matrix.repo }}
+        run: scripts/osc_build.sh "${{ matrix.repo }}" x86_64
+
+  # GitHub lists each matrix cell as "osc-build (Repo)". Require this job, not
+  # those names: needs.osc-build.result is success only if every cell succeeded.
+  # if: always() so a red/cancelled matrix still reports failure (skipped
+  # required checks do not block merge).
+  ci:
+    if: always()
+    needs: [test, dist, osc-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: All required jobs passed
+        run: |
+          printf 'test=%s dist=%s osc-build=%s\n' \
+            "${{ needs.test.result }}" \
+            "${{ needs.dist.result }}" \
+            "${{ needs.osc-build.result }}"
+          test "${{ needs.test.result }}" = success
+          test "${{ needs.dist.result }}" = success
+          test "${{ needs.osc-build.result }}" = success
