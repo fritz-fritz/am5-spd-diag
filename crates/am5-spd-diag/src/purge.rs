@@ -85,13 +85,21 @@ pub fn purge_then_user(plan: &PurgeSystem, user_targets: &[PathBuf]) -> Result<(
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
     use std::os::unix::fs::PermissionsExt;
 
+    /// OBS KVM ext3 can ETXTBSY a stub that was just written; sync, then rename.
     fn write_exec(path: &Path, body: &str) {
-        fs::write(path, body).unwrap();
-        let mut perms = fs::metadata(path).unwrap().permissions();
+        let tmp = path.with_extension("tmp");
+        {
+            let mut f = fs::File::create(&tmp).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+        }
+        let mut perms = fs::metadata(&tmp).unwrap().permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(path, perms).unwrap();
+        fs::set_permissions(&tmp, perms).unwrap();
+        fs::rename(&tmp, path).unwrap();
     }
 
     #[test]

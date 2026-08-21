@@ -56,7 +56,7 @@ OSC_REPOS ?= openSUSE_Tumbleweed openSUSE_Slowroll 16.0 Fedora_44 Fedora_43 \
 	Debian_Testing Debian_13 Debian_12
 
 .PHONY: build test test-tool test-packaging bump bump-check rust-pin install uninstall uninstall-purge dist vendor \
-	osc-fetch-rust osc-build osc-matrix osc-meta
+	osc-fetch-rust osc-build osc-matrix osc-meta print-osc-repos
 
 build:
 	$(CARGO) build --release -p am5-spd-diag $(CARGOFLAGS)
@@ -374,6 +374,9 @@ dist: vendor
 
 osc-fetch-rust:
 	$(MAKEFILE_DIR)scripts/osc_fetch_rust.sh "$(DIST_PARENT)" "$(RUST_DIST_TXT)"
+
+print-osc-repos:
+	@echo $(OSC_REPOS)
 
 osc-build: dist osc-fetch-rust
 	$(MAKEFILE_DIR)scripts/osc_build.sh $(REPO) $(ARCH)

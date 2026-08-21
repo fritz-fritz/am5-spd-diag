@@ -1,3 +1,7 @@
+# CI: host fmt/clippy/make test, then one `osc build` per OSC_REPOS (chroot,
+# no osc commit). Mark the osc-build job required in branch protection so
+# packaging failures block merge before a tag.
+
 name: CI
 
 on:
@@ -50,3 +54,105 @@ jobs:
 
       - name: Test
         run: make test
+
+  # Source0 + vendor + pinned rustc, then one osc build per OBS repo.
+  # Never osc commit. fail-fast cancels remaining cells on the first red.
+  dist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DIST_PARENT: ${{ runner.temp }}/osc-dist
+    outputs:
+      matrix: ${{ steps.repos.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: OSC_REPOS matrix
+        id: repos
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          repos = subprocess.check_output(
+              ["make", "-s", "print-osc-repos"], text=True
+          ).split()
+          if not repos:
+              raise SystemExit("print-osc-repos produced no repos")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("matrix=" + json.dumps({"repo": repos}) + "\n")
+          PY
+
+      - name: Read rustc pin
+        id: rust
+        run: |
+          mkdir -p "$DIST_PARENT"
+          echo "version=$(scripts/rust_pin.sh channel)" >> "$GITHUB_OUTPUT"
+          echo "file=$(scripts/rust_pin.sh file)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+
+      - name: Cache pinned rustc tarball
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.DIST_PARENT }}/${{ steps.rust.outputs.file }}
+          key: rustc-${{ hashFiles('obs/rust-dist.txt') }}
+
+      - name: Dist sources
+        run: |
+          make dist
+          make osc-fetch-rust
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: osc-sources
+          path: ${{ env.DIST_PARENT }}
+          if-no-files-found: error
+          retention-days: 1
+
+  osc-build:
+    needs: dist
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.dist.outputs.matrix) }}
+    env:
+      DIST_PARENT: ${{ runner.temp }}/osc-dist
+      OSC_WC: ${{ runner.temp }}/osc-wc
+      OSC_RC: ${{ runner.temp }}/oscrc
+      OSC_VM_TYPE: chroot
+      OSC_PRELOAD: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install osc
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osc obs-build
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: osc-sources
+          path: ${{ env.DIST_PARENT }}
+
+      - name: Configure oscrc
+        env:
+          OBS_USER: ${{ secrets.OBS_USER }}
+          OBS_PASSWORD: ${{ secrets.OBS_PASSWORD }}
+        run: |
+          {
+            echo '[general]'
+            echo 'apiurl = https://api.opensuse.org'
+            echo 'su-wrapper = sudo'
+            if [ -n "$OBS_USER" ] && [ -n "$OBS_PASSWORD" ]; then
+              echo '[https://api.opensuse.org]'
+              echo "user = $OBS_USER"
+              echo "pass = $OBS_PASSWORD"
+              echo 'credentials_mgr_class = osc.credentials.PlaintextConfigFileCredentialsManager'
+            fi
+          } > "$OSC_RC"
+          chmod 600 "$OSC_RC"
+
+      - name: osc build ${{ matrix.repo }}
+        run: scripts/osc_build.sh "${{ matrix.repo }}" x86_64

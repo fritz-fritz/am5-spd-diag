@@ -6,6 +6,9 @@
 #   make dist && make osc-fetch-rust
 #   scripts/osc_build.sh 16.0
 #   OSC_OFFLINE=1 scripts/osc_build.sh openSUSE_Tumbleweed
+#   OSC_VM_TYPE=chroot OSC_PRELOAD=0 scripts/osc_build.sh xUbuntu_24.10
+#
+# Do not osc commit from CI. Optional OSC_RC is an oscrc (API auth only).
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -21,7 +24,12 @@ RUST_FILE=$("$ROOT/scripts/rust_pin.sh" file "$ROOT/obs/rust-dist.txt")
 # then chdirs to OWD ($HOME), so `osc build` from a checkout fails with
 # "Directory '/home/…' is not a working copy".
 osc() {
-	env -u APPIMAGE -u OWD /usr/bin/osc "$@"
+	local -a cmd
+	cmd=(/usr/bin/osc)
+	if [ -n "${OSC_RC:-}" ]; then
+		cmd+=(-c "$OSC_RC")
+	fi
+	env -u APPIMAGE -u OWD "${cmd[@]}" "$@"
 }
 
 VERSION=$(awk '/^VERSION/{print $3; exit}' "$ROOT/Makefile")
@@ -78,10 +86,11 @@ cp -f "$ROOT"/debian.control "$ROOT"/debian.changelog "$ROOT"/debian.rules \
 )
 
 BUILD_ROOT=/var/tmp/build-root/${REPO}-${ARCH}
-PRELOAD_FLAGS=(--preload)
-BUILD_FLAGS=()
+BUILD_FLAGS=(--trust-all-projects --no-verify)
+if [ -n "${OSC_VM_TYPE:-}" ]; then
+	BUILD_FLAGS+=(--vm-type="$OSC_VM_TYPE")
+fi
 if [ "${OSC_OFFLINE:-0}" = 1 ]; then
-	PRELOAD_FLAGS=()
 	BUILD_FLAGS+=(--offline)
 	if [ -d "$BUILD_ROOT" ]; then
 		BUILD_FLAGS+=(--noinit)
@@ -89,7 +98,7 @@ if [ "${OSC_OFFLINE:-0}" = 1 ]; then
 fi
 
 cd "$OSC_WC"
-if [ "${#PRELOAD_FLAGS[@]}" -gt 0 ]; then
-	osc build --trust-all-projects --no-verify "${PRELOAD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"
+if [ "${OSC_PRELOAD:-1}" = 1 ] && [ "${OSC_OFFLINE:-0}" != 1 ]; then
+	osc build "${BUILD_FLAGS[@]}" --preload "$REPO" "$ARCH" "$DESCR"
 fi
-osc build --trust-all-projects --no-verify "${BUILD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"
+osc build "${BUILD_FLAGS[@]}" "$REPO" "$ARCH" "$DESCR"

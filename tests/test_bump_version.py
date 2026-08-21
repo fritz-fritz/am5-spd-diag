@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -237,7 +238,57 @@ def test_obs_wait_payload() -> None:
     assert wait.finished_ok([], ["tw/x86_64: succeeded"]) is True
     assert wait.finished_ok([], []) is False
     assert wait.finished_ok([], [], ["tw/x86_64: failed"]) is None
-    assert wait.finished_ok([], ["tw/x86_64: succeeded"], ["ubuntu/x86_64: failed"]) is True
+    assert wait.finished_ok([], ["tw/x86_64: succeeded"], ["ubuntu/x86_64: failed"]) is None
+    assert (
+        wait.finished_ok(
+            [],
+            ["tw/x86_64: succeeded"],
+            ["ubuntu/x86_64: failed"],
+            retries_exhausted=True,
+        )
+        is False
+    )
+    seen_live: set[tuple[str, str]] = set()
+    retried: set[tuple[str, str]] = set()
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=[],
+        ready=[],
+    ) == []
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=["Fedora_44/x86_64: building"],
+        ready=[],
+    ) == []
+    seen_live.add(("xUbuntu_24.10", "x86_64"))
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=["Fedora_44/x86_64: building"],
+        ready=[],
+    ) == [("xUbuntu_24.10", "x86_64")]
+    retried.add(("xUbuntu_24.10", "x86_64"))
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=[],
+        ready=["Fedora_44/x86_64: succeeded"],
+    ) == []
+    retried.clear()
+    seen_live.clear()
+    assert wait.maybe_rebuild(
+        [("xUbuntu_24.10", "x86_64")],
+        seen_live=seen_live,
+        retried=retried,
+        pending=[],
+        ready=["Fedora_44/x86_64: succeeded"],
+    ) == [("xUbuntu_24.10", "x86_64")]
     assert wait.collapse_results(
         [
             ("Debian_12", "x86_64", "succeeded"),
@@ -282,6 +333,36 @@ def test_obs_wait_payload() -> None:
         pending, failed, skipped, ready = wait.snapshot(None, "home:x", "am5-spd-diag", "1.0.1")
         assert ready == []
         assert pending == ["Fedora_44/x86_64: binaries not listed yet"]
+
+        orig_bytes = wait.osc_bytes
+        api_calls: list[tuple[str, ...]] = []
+
+        def fake_bytes(_config: str | None, *args: str) -> bytes:
+            api_calls.append(args)
+            assert args[0] == "api"
+            assert "getbinaries" not in args
+            return b"rpm-bytes"
+
+        wait.osc_bytes = fake_bytes
+        wait.results = lambda *_a, **_k: [("Fedora_44", "x86_64", "succeeded")]
+        wait.binary_names = lambda *_a, **_k: [
+            "am5-spd-diag-1.0.1-0.x86_64.rpm",
+            "am5-spd-diag-1.0.1-0.src.rpm",
+            "rpmlint.log",
+        ]
+        dest = Path(tempfile.mkdtemp())
+        try:
+            assert wait.download_binaries(None, "home:x", "am5-spd-diag", "1.0.1", str(dest)) == 0
+            rpm = dest / "Fedora_44" / "x86_64" / "am5-spd-diag-1.0.1-0.x86_64.rpm"
+            assert rpm.read_bytes() == b"rpm-bytes"
+            assert not (dest / "Fedora_44" / "x86_64" / "am5-spd-diag-1.0.1-0.src.rpm").exists()
+            assert len(api_calls) == 1
+            assert api_calls[0] == (
+                "api",
+                "/build/home:x/Fedora_44/x86_64/am5-spd-diag/am5-spd-diag-1.0.1-0.x86_64.rpm",
+            )
+        finally:
+            wait.osc_bytes = orig_bytes
     finally:
         wait.results = orig_results
         wait.binary_names = orig_names
@@ -368,6 +449,24 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "toolchain: ${{ steps.rust.outputs.version }}" in release
     assert "rust_pin.sh channel" in ci
     assert "rust_pin.sh channel" in release
+    assert "print-osc-repos" in makefile
+    assert "print-osc-repos" in ci
+    repos = subprocess.check_output(
+        ["make", "-s", "print-osc-repos"], cwd=ROOT, text=True
+    ).split()
+    assert "xUbuntu_24.10" in repos
+    assert "openSUSE_Tumbleweed" in repos
+    assert len(repos) >= 13
+    assert "fail-fast: true" in ci
+    assert "fromJSON(needs.dist.outputs.matrix)" in ci
+    assert "OSC_VM_TYPE: chroot" in ci
+    assert "OSC_PRELOAD" in ci
+    assert "scripts/osc_build.sh" in ci
+    assert not re.search(r"^\s+osc(\s+-c\s+\S+)?\s+commit\b", ci, re.MULTILINE)
+    osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
+    assert "OSC_VM_TYPE" in osc_build
+    assert "OSC_PRELOAD" in osc_build
+    assert not re.search(r"^\s*osc(\s+-c\s+\S+)?\s+commit\b", osc_build, re.MULTILINE)
     assert "package-ecosystem: rust-toolchain" in (
         ROOT / ".github/dependabot.yml"
     ).read_text(encoding="utf-8")
