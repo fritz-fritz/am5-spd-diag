@@ -691,6 +691,7 @@ def test_release_profile_and_rpmlint() -> None:
         (ROOT / "debian" / "rules").read_text(encoding="utf-8"),
     ):
         assert "noautodbgsym" in rules
+        assert "UNITDIR=/lib/systemd/system" in rules
         assert "--no-start" in rules
         assert "--no-enable" not in rules
         assert "am5-spd-diag-pre-sleep.service" in rules

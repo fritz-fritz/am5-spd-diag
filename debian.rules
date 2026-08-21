@@ -21,7 +21,9 @@ override_dh_auto_test:
 	$(MAKE) test
 
 override_dh_auto_install:
-	$(MAKE) DESTDIR=$(CURDIR)/debian/am5-spd-diag PREFIX=/usr install
+	# Debian 12 dh_installsystemd only scans lib/systemd/system, not usr/lib.
+	$(MAKE) DESTDIR=$(CURDIR)/debian/am5-spd-diag PREFIX=/usr \
+		UNITDIR=/lib/systemd/system install
 
 # Enable on install. Start the boot oneshot for a baseline capture; do not
 # start sleep units (those fire on suspend/resume). --no-stop-on-upgrade
