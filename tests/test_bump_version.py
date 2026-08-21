@@ -469,6 +469,9 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "OSC_VM_TYPE" in osc_build
     assert "OSC_PRELOAD" in osc_build
     assert "obs_build_cmd.sh" in osc_build
+    assert "/usr/bin/obs-build" in (ROOT / "scripts" / "obs_build_cmd.sh").read_text(
+        encoding="utf-8"
+    )
     assert not re.search(r"^\s*osc(\s+-c\s+\S+)?\s+commit\b", osc_build, re.MULTILINE)
     assert "package-ecosystem: rust-toolchain" in (
         ROOT / ".github/dependabot.yml"
@@ -566,6 +569,16 @@ def test_obs_build_cmd_preinstalls_shadow() -> None:
         patched = Path(passed.split("=", 1)[1])
         assert patched != path
         assert "preinstall: filesystem shadow" in patched.read_text(encoding="utf-8")
+        env_miss = os.environ.copy()
+        env_miss["OBS_BUILD_REAL"] = str(Path(tmp) / "no-such-build")
+        proc = subprocess.run(
+            ["bash", str(wrapper), f"--rpmlist={path}"],
+            env=env_miss,
+            capture_output=True,
+            text=True,
+        )
+        assert proc.returncode != 0
+        assert "not executable" in proc.stderr
         deb = Path(tmp) / "deb-rpmlist"
         deb.write_text(
             "libc6 /cache/libc6.deb\npreinstall: build-essential\n",

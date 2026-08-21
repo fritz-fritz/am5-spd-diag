@@ -9,7 +9,29 @@
 # it (PermissionError), so patch a copy we own and pass that path through.
 set -euo pipefail
 
-REAL=${OBS_BUILD_REAL:-/usr/bin/build}
+# Ubuntu/Debian ship obs-build as /usr/bin/obs-build, not /usr/bin/build.
+# sudo may strip OBS_BUILD_REAL, so resolve from well-known paths here.
+find_build() {
+	if [ -n "${OBS_BUILD_REAL:-}" ]; then
+		if [ -x "$OBS_BUILD_REAL" ]; then
+			printf '%s\n' "$OBS_BUILD_REAL"
+			return
+		fi
+		printf 'obs_build_cmd: OBS_BUILD_REAL is not executable: %s\n' "$OBS_BUILD_REAL" >&2
+		return 1
+	fi
+	local c
+	for c in /usr/bin/build /usr/bin/obs-build /usr/lib/obs-build/build; do
+		if [ -x "$c" ]; then
+			printf '%s\n' "$c"
+			return
+		fi
+	done
+	printf 'obs_build_cmd: no obs-build binary (tried /usr/bin/build, /usr/bin/obs-build, /usr/lib/obs-build/build)\n' >&2
+	return 1
+}
+
+REAL=$(find_build)
 
 patched_rpmlist() {
 	python3 - "$1" <<'PY'
