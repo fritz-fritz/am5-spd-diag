@@ -1,6 +1,9 @@
 # CI: host fmt/clippy/make test, then one `osc build` per OSC_REPOS (chroot,
 # no osc commit). Branch protection cannot require a matrix as one name; require
 # the `ci` aggregator so every osc-build cell must pass before merge.
+# osc-build runs on pull_request and workflow_dispatch only: merge already
+# required `ci`, and a push to master misses the PR package cache (Slowroll
+# hit a mirror timeout after #26).
 
 name: CI
 
@@ -57,7 +60,9 @@ jobs:
 
   # Source0 + vendor + pinned rustc, then one osc build per OBS repo.
   # Never osc commit. fail-fast cancels remaining cells on the first red.
+  # Skip on push to master/main: the PR aggregator already gated the merge.
   dist:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -185,7 +190,7 @@ jobs:
   # if: always() so a red/cancelled matrix still reports failure (skipped
   # required checks do not block merge).
   ci:
-    if: always()
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     needs: [test, dist, osc-build]
     runs-on: ubuntu-latest
     steps:
