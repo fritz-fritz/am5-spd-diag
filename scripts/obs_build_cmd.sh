@@ -21,17 +21,21 @@ find_build() {
 		return 1
 	fi
 	local c
-	for c in /usr/bin/build /usr/bin/obs-build /usr/lib/obs-build/build; do
+	for c in /opt/obs-build/build /usr/bin/build /usr/bin/obs-build /usr/lib/obs-build/build; do
 		if [ -x "$c" ]; then
 			printf '%s\n' "$c"
 			return
 		fi
 	done
-	printf 'obs_build_cmd: no obs-build binary (tried /usr/bin/build, /usr/bin/obs-build, /usr/lib/obs-build/build)\n' >&2
+	printf 'obs_build_cmd: no obs-build binary (tried /opt/obs-build/build, /usr/bin/build, /usr/bin/obs-build, /usr/lib/obs-build/build)\n' >&2
 	return 1
 }
 
 REAL=$(find_build)
+BUILD_HOME=$(dirname "$REAL")
+if [ -x "$BUILD_HOME/init_buildsystem" ]; then
+	export BUILD_DIR=$BUILD_HOME
+fi
 
 patched_rpmlist() {
 	python3 - "$1" <<'PY'
