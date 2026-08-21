@@ -450,15 +450,21 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "rust_pin.sh channel" in ci
     assert "rust_pin.sh channel" in release
     assert "print-osc-repos" in makefile
-    assert "print-osc-repos" in ci
     repos = subprocess.check_output(
         ["make", "-s", "print-osc-repos"], cwd=ROOT, text=True
     ).split()
     assert "xUbuntu_24.10" in repos
     assert "openSUSE_Tumbleweed" in repos
     assert len(repos) >= 13
+    matrix_block = ci.split("matrix:", 1)[1].split("env:", 1)[0]
+    ci_repos = [
+        line.strip().strip("- ").strip('"')
+        for line in matrix_block.splitlines()
+        if line.strip().startswith("- ")
+    ]
+    assert ci_repos == repos
     assert "fail-fast: true" in ci
-    assert "fromJSON(needs.dist.outputs.matrix)" in ci
+    assert "fromJSON(" not in ci
     assert "OSC_VM_TYPE: chroot" in ci
     assert "OSC_PRELOAD" in ci
     assert "scripts/osc_build.sh" in ci

@@ -62,24 +62,8 @@ jobs:
     timeout-minutes: 30
     env:
       DIST_PARENT: ${{ runner.temp }}/osc-dist
-    outputs:
-      matrix: ${{ steps.repos.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: OSC_REPOS matrix
-        id: repos
-        run: |
-          python3 - <<'PY'
-          import json, os, subprocess
-          repos = subprocess.check_output(
-              ["make", "-s", "print-osc-repos"], text=True
-          ).split()
-          if not repos:
-              raise SystemExit("print-osc-repos produced no repos")
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write("matrix=" + json.dumps({"repo": repos}) + "\n")
-          PY
 
       - name: Read rustc pin
         id: rust
@@ -116,7 +100,21 @@ jobs:
     timeout-minutes: 45
     strategy:
       fail-fast: true
-      matrix: ${{ fromJSON(needs.dist.outputs.matrix) }}
+      matrix:
+        repo:
+          - openSUSE_Tumbleweed
+          - openSUSE_Slowroll
+          - "16.0"
+          - Fedora_44
+          - Fedora_43
+          - xUbuntu_26.04
+          - xUbuntu_25.10
+          - xUbuntu_25.04
+          - xUbuntu_24.10
+          - xUbuntu_24.04
+          - Debian_Testing
+          - Debian_13
+          - Debian_12
     env:
       DIST_PARENT: ${{ runner.temp }}/osc-dist
       OSC_WC: ${{ runner.temp }}/osc-wc
