@@ -1,5 +1,9 @@
 am5-spd-diag (1.0.4-1) unstable; urgency=medium
 
+  * Enable the capture units on package install (systemd preset; distro
+    defaults are disable *) and disable/stop them on uninstall. Drop
+    addFilter() for Factory polkit checks (BlockedFilters, unused on src)
+    and zero their rpmlint badness instead.
   * Stop hardlinking pkexec helpers across /usr/bin and /usr/libexec
     (openSUSE rpmlint hardlink-across-partition). Keep one inode in libexec
     and a bindir symlink. Use addFilter() in the package rpmlintrc so
@@ -62,4 +66,4 @@ am5-spd-diag (1.0.4-1) unstable; urgency=medium
   * Initial package 0.1.0: AM5 DDR5 SPD hub diagnostics after sleep and warm
     reboot.
 
- -- Fritz <code@fritztech.net>  Thu, 20 Aug 2026 18:50:39 +0000
+ -- Fritz <code@fritztech.net>  Thu, 20 Aug 2026 20:15:00 +0000

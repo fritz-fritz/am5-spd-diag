@@ -6,6 +6,7 @@ LIBEXECDIR  := $(PREFIX)/libexec/$(NAME)
 SHAREDIR    := $(PREFIX)/share/$(NAME)
 DOCDIR      := $(PREFIX)/share/doc/$(NAME)
 UNITDIR     := $(PREFIX)/lib/systemd/system
+PRESETDIR   := $(PREFIX)/lib/systemd/system-preset
 SLEEPDIR    := $(PREFIX)/lib/systemd/system-sleep
 TMPFILESDIR := $(PREFIX)/lib/tmpfiles.d
 POLKITDIR   := $(PREFIX)/share/polkit-1/actions
@@ -97,6 +98,13 @@ test-packaging:
 	  cmp -s debian.rules debian/rules && \
 	  cmp -s debian.compat debian/compat; \
 	fi
+	grep -q '^enable am5-spd-diag.service$$' systemd/50-$(NAME).preset
+	grep -q '^enable am5-spd-diag-pre-sleep.service$$' systemd/50-$(NAME).preset
+	grep -q '^enable am5-spd-diag-post-sleep.service$$' systemd/50-$(NAME).preset
+	grep -q '%service_add_post am5-spd-diag.service' $(NAME).spec
+	grep -q '%service_del_preun am5-spd-diag.service' $(NAME).spec
+	grep -q 'system-preset/50-%{name}.preset' $(NAME).spec
+	! grep -q -- '--no-enable' debian.rules
 	grep -q '^d= /var/log/am5-spd-diag 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
 	grep -q '^d= /var/log/am5-spd-diag/events 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
 	grep -q '^d= /var/log/am5-spd-diag/latest 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
@@ -227,6 +235,7 @@ install:
 	$(INSTALL) -d $(DESTDIR)$(SHAREDIR)/templates
 	$(INSTALL) -d $(DESTDIR)$(DOCDIR)
 	$(INSTALL) -d $(DESTDIR)$(UNITDIR)
+	$(INSTALL) -d $(DESTDIR)$(PRESETDIR)
 	$(INSTALL) -d $(DESTDIR)$(SLEEPDIR)
 	$(INSTALL) -d $(DESTDIR)$(TMPFILESDIR)
 	$(INSTALL) -d $(DESTDIR)$(POLKITDIR)
@@ -261,6 +270,7 @@ install:
 	$(INSTALL_DATA) systemd/$(NAME).service $(DESTDIR)$(UNITDIR)/$(NAME).service
 	$(INSTALL_DATA) systemd/$(NAME)-pre-sleep.service $(DESTDIR)$(UNITDIR)/$(NAME)-pre-sleep.service
 	$(INSTALL_DATA) systemd/$(NAME)-post-sleep.service $(DESTDIR)$(UNITDIR)/$(NAME)-post-sleep.service
+	$(INSTALL_DATA) systemd/50-$(NAME).preset $(DESTDIR)$(PRESETDIR)/50-$(NAME).preset
 	$(INSTALL_PROGRAM) systemd/system-sleep/$(NAME) $(DESTDIR)$(SLEEPDIR)/$(NAME)
 	$(INSTALL_DATA) man/am5-spd-diag.1 $(DESTDIR)$(MANDIR)/am5-spd-diag.1
 	$(INSTALL_DATA) systemd/$(NAME).tmpfiles.conf $(DESTDIR)$(TMPFILESDIR)/$(NAME).conf
@@ -295,6 +305,7 @@ uninstall:
 	-rm -f $(DESTDIR)$(UNITDIR)/$(NAME).service \
 	      $(DESTDIR)$(UNITDIR)/$(NAME)-pre-sleep.service \
 	      $(DESTDIR)$(UNITDIR)/$(NAME)-post-sleep.service
+	-rm -f $(DESTDIR)$(PRESETDIR)/50-$(NAME).preset
 	-rm -f $(DESTDIR)$(SLEEPDIR)/$(NAME)
 	-rm -f $(DESTDIR)$(TMPFILESDIR)/$(NAME).conf
 	-rm -f $(DESTDIR)$(POLKITDIR)/org.opensuse.am5-spd-diag.snapshot.policy

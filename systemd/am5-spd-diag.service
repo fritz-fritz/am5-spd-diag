@@ -1,6 +1,6 @@
 [Unit]
 Description=Capture AM5 DIMM/SPD evidence at boot and before shutdown/reboot
-Documentation=file:///usr/share/doc/am5-spd-diag/README.md
+Documentation=man:am5-spd-diag(1)
 DefaultDependencies=no
 After=local-fs.target
 RequiresMountsFor=/var/log

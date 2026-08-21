@@ -437,16 +437,34 @@ def test_release_profile_and_rpmlint() -> None:
     spec = (ROOT / "am5-spd-diag.spec").read_text(encoding="utf-8")
     assert "%define debug_package %{nil}" in spec
     assert "%service_add_pre am5-spd-diag.service" in spec
+    assert "%service_add_post am5-spd-diag.service" in spec
+    assert "%service_del_preun am5-spd-diag.service" in spec
+    assert "%service_del_postun am5-spd-diag.service" in spec
     assert re.search(r"^%pre\b", spec, re.MULTILINE)
+    units = (
+        "am5-spd-diag.service",
+        "am5-spd-diag-pre-sleep.service",
+        "am5-spd-diag-post-sleep.service",
+    )
+    for unit in units:
+        assert f"enable {unit}" in (ROOT / "systemd/50-am5-spd-diag.preset").read_text(
+            encoding="utf-8"
+        )
+        assert unit in spec
+    assert "%{_prefix}/lib/systemd/system-preset/50-%{name}.preset" in spec
+    assert "systemctl --no-reload preset" in spec
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     assert "ln -f $(DESTDIR)$(LIBEXECDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" in makefile
     assert "ln -sf ../libexec/$(NAME)/$(NAME) $(DESTDIR)$(BINDIR)/$(NAME)" in makefile
     assert "ln -f $(DESTDIR)$(BINDIR)/$(NAME) $(DESTDIR)$(LIBEXECDIR)/pkexec-snapshot" not in makefile
+    assert "systemd/50-$(NAME).preset" in makefile
     for rules in (
         (ROOT / "debian.rules").read_text(encoding="utf-8"),
         (ROOT / "debian" / "rules").read_text(encoding="utf-8"),
     ):
         assert "noautodbgsym" in rules
+        assert "--no-start" in rules
+        assert "--no-enable" not in rules
     rpmlintrc = (ROOT / "am5-spd-diag.rpmlintrc").read_text(encoding="utf-8")
     for check in (
         "polkit-user-privilege",
@@ -454,7 +472,8 @@ def test_release_profile_and_rpmlint() -> None:
         "polkit-file-unauthorized",
     ):
         assert check in rpmlintrc
-    assert "addFilter(" in rpmlintrc
+        assert f'setBadness("{check}", 0)' in rpmlintrc
+    assert "addFilter(" not in rpmlintrc
     osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
     assert "$NAME.rpmlintrc" in osc_build
     release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

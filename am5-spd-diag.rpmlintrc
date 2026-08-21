@@ -1,6 +1,8 @@
 # Passwordless snapshot/probe for a local active session is intentional.
-# Factory polkit-default-privs / rules whitelist do not apply to a home project.
-# .rpmlintrc uses addFilter() (not TOML Filters); OBS rpmlint 2.9 loads this file.
-addFilter("polkit-user-privilege")
-addFilter("polkit-untracked-privilege")
-addFilter("polkit-file-unauthorized")
+# Factory lists these polkit checks in BlockedFilters, so a name filter
+# never matches and is reported unused on the src package. Zero the
+# badness instead: a home project cannot whitelist Factory polkit profiles.
+# Leap/Fedora still score these unless badness is cleared.
+setBadness("polkit-user-privilege", 0)
+setBadness("polkit-untracked-privilege", 0)
+setBadness("polkit-file-unauthorized", 0)

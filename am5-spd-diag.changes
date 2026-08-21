@@ -1,4 +1,12 @@
 -------------------------------------------------------------------
+Thu Aug 20 20:15:00 UTC 2026 - Fritz <code@fritztech.net>
+
+- Enable the capture units on package install (systemd preset; distro
+  defaults are disable *) and disable/stop them on uninstall. Drop
+  addFilter() for Factory polkit checks (BlockedFilters, unused on
+  src) and zero their rpmlint badness instead.
+
+-------------------------------------------------------------------
 Thu Aug 20 18:50:39 UTC 2026 - Fritz <code@fritztech.net>
 
 - Stop hardlinking pkexec helpers across /usr/bin and /usr/libexec (openSUSE
