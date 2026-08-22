@@ -498,6 +498,8 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "fromJSON(needs.dist.outputs.matrix)" in ci
     assert "needs: [test, dist, osc-build]" in ci
     assert "if: always()" in ci
+    assert "github.event_name == 'pull_request'" in ci
+    assert "github.event_name == 'workflow_dispatch'" in ci
     assert "OSC_VM_TYPE: chroot" in ci
     assert "OSC_PRELOAD" in ci
     assert "packagecachedir" in ci
@@ -650,7 +652,10 @@ def test_release_profile_and_rpmlint() -> None:
     assert "%service_add_pre am5-spd-diag.service" in spec
     assert "%service_add_post am5-spd-diag.service" in spec
     assert "%service_del_preun am5-spd-diag.service" in spec
-    assert "%service_del_postun am5-spd-diag.service" in spec
+    assert "%service_del_postun_without_restart am5-spd-diag.service" in spec
+    assert "%systemd_postun am5-spd-diag.service" in spec
+    assert "%systemd_postun_with_restart" not in spec
+    assert "%service_del_postun am5-spd-diag.service\n" not in spec
     assert re.search(r"^%pre\b", spec, re.MULTILINE)
     units = (
         "am5-spd-diag.service",
@@ -664,6 +669,10 @@ def test_release_profile_and_rpmlint() -> None:
         assert unit in spec
     assert "%{_prefix}/lib/systemd/system-preset/50-%{name}.preset" in spec
     assert "systemctl --no-reload preset" in spec
+    assert "is-active --quiet am5-spd-diag.service" in spec
+    assert "systemctl start am5-spd-diag.service" in spec
+    assert "systemctl start am5-spd-diag-pre-sleep.service" not in spec
+    assert "systemctl start am5-spd-diag-post-sleep.service" not in spec
     for i, line in enumerate(spec.splitlines(), 1):
         stripped = line.lstrip()
         if not stripped.startswith("#"):
@@ -682,8 +691,18 @@ def test_release_profile_and_rpmlint() -> None:
         (ROOT / "debian" / "rules").read_text(encoding="utf-8"),
     ):
         assert "noautodbgsym" in rules
+        assert "UNITDIR=/lib/systemd/system" in rules
         assert "--no-start" in rules
         assert "--no-enable" not in rules
+        assert "am5-spd-diag-pre-sleep.service" in rules
+        assert "am5-spd-diag-post-sleep.service" in rules
+        boot_starts = [
+            line
+            for line in rules.splitlines()
+            if "dh_installsystemd" in line and "am5-spd-diag.service" in line
+        ]
+        assert boot_starts, "debian rules must start the boot unit"
+        assert all("--no-start" not in line for line in boot_starts)
     rpmlintrc = (ROOT / "am5-spd-diag.rpmlintrc").read_text(encoding="utf-8")
     for check in (
         "polkit-user-privilege",

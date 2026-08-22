@@ -82,9 +82,12 @@ export PATH=/tmp/am5-rust/bin:$PATH
 export CARGO_HOME=%{_builddir}/%{name}-%{version}/.cargo-home
 %make_build test
 
-# systemd post/preun macros run systemctl preset. Distro defaults are
-# disable *; 50-am5-spd-diag.preset enables these units on install.
-# service_del_preun disables and stops them on uninstall (not upgrade).
+# systemd post/preun macros: preset-enable on install (distro default is
+# disable *). Disable/stop on uninstall, not upgrade.
+# Reload unit files on upgrade (daemon-reload). Never restart oneshots:
+# ExecStop on the boot unit is a real shutdown capture.
+# Start the boot oneshot only when it is inactive (first install, or
+# enabled but never started). Do not start sleep units.
 %pre
 %if 0%{?suse_version}
 %service_add_pre am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
@@ -107,6 +110,10 @@ if [ -x /usr/bin/systemctl ]; then
     am5-spd-diag-pre-sleep.service \
     am5-spd-diag-post-sleep.service \
     >/dev/null 2>&1 || :
+  if [ -d /run/systemd/system ] && \
+     ! /usr/bin/systemctl is-active --quiet am5-spd-diag.service; then
+    /usr/bin/systemctl start am5-spd-diag.service >/dev/null 2>&1 || :
+  fi
 fi
 
 %preun
@@ -118,11 +125,9 @@ fi
 
 %postun
 %if 0%{?suse_version}
-%service_del_postun_without_restart am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
-%service_del_postun am5-spd-diag.service
+%service_del_postun_without_restart am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
 %else
-%systemd_postun am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
-%systemd_postun_with_restart am5-spd-diag.service
+%systemd_postun am5-spd-diag.service am5-spd-diag-pre-sleep.service am5-spd-diag-post-sleep.service
 %endif
 
 %files

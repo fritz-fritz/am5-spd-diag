@@ -112,6 +112,7 @@ Build as your user. `sudo make install` only copies what you already built; it d
 
 After install, captures run on their own:
 
+- once at install (boot unit starts immediately for a baseline)
 - at boot and shutdown
 - just before sleep
 - just after resume

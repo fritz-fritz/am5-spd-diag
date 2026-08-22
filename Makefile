@@ -103,7 +103,11 @@ test-packaging:
 	grep -q '^enable am5-spd-diag-post-sleep.service$$' systemd/50-$(NAME).preset
 	grep -q '%service_add_post am5-spd-diag.service' $(NAME).spec
 	grep -q '%service_del_preun am5-spd-diag.service' $(NAME).spec
+	grep -q '%service_del_postun_without_restart am5-spd-diag.service' $(NAME).spec
+	! grep -q '%systemd_postun_with_restart' $(NAME).spec
 	grep -q 'system-preset/50-%{name}.preset' $(NAME).spec
+	grep -q 'is-active --quiet am5-spd-diag.service' $(NAME).spec
+	grep -q 'systemctl start am5-spd-diag.service' $(NAME).spec
 	! grep -q -- '--no-enable' debian.rules
 	grep -q '^d= /var/log/am5-spd-diag 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
 	grep -q '^d= /var/log/am5-spd-diag/events 0755 root root -$$' systemd/$(NAME).tmpfiles.conf
