@@ -21,7 +21,7 @@ INSTALL ?= install
 INSTALL_PROGRAM = $(INSTALL) -m 0755
 INSTALL_DATA    = $(INSTALL) -m 0644
 
-VERSION     ?= 1.0.6
+VERSION     ?= 1.0.7
 
 # OBS project directories contain ':'; rustc rejects that in LD_LIBRARY_PATH.
 # Use a path without ':' and without $HOME so `sudo make install` finds the
