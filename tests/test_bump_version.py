@@ -494,7 +494,10 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "xUbuntu_24.10" in repos
     assert "openSUSE_Tumbleweed" in repos
     assert len(repos) >= 13
-    assert "fail-fast: true" in ci
+    assert "fail-fast: false" in ci
+    assert "precedence ::ffff:0:0/96  100" in ci
+    assert "ahostsv4" in ci
+    assert "retrying (attempt" in ci
     assert "fromJSON(needs.dist.outputs.matrix)" in ci
     assert "needs: [test, dist, osc-build]" in ci
     assert "if: always()" in ci
@@ -510,6 +513,7 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     osc_build = (ROOT / "scripts" / "osc_build.sh").read_text(encoding="utf-8")
     assert "OSC_VM_TYPE" in osc_build
     assert "OSC_PRELOAD" in osc_build
+    assert "--download-api-only" in osc_build
     assert "obs_build_cmd.sh" in osc_build
     assert '--config "$OSC_RC"' in osc_build
     assert not re.search(r'cmd\+=\(-c ', osc_build)

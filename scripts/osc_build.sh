@@ -93,6 +93,11 @@ cp -f "$ROOT"/debian.control "$ROOT"/debian.changelog "$ROOT"/debian.rules \
 
 BUILD_ROOT=/var/tmp/build-root/${REPO}-${ARCH}
 BUILD_FLAGS=(--trust-all-projects --no-verify)
+# OBS Fedora download URLs redirect to Fedora mirrors without Packages/<letter>/,
+# so every RPM 404s and osc queues a bulk API CPIO. Skip the 404 loop.
+case "$REPO" in
+Fedora_*) BUILD_FLAGS+=(--download-api-only) ;;
+esac
 if [ -n "${OSC_VM_TYPE:-}" ]; then
 	BUILD_FLAGS+=(--vm-type="$OSC_VM_TYPE")
 fi
