@@ -1,4 +1,10 @@
 -------------------------------------------------------------------
+Sat Aug 22 04:09:51 UTC 2026 - Fritz <code@fritztech.net>
+
+- Start the boot capture unit on install without logging a fake shutdown on
+  upgrade.
+
+-------------------------------------------------------------------
 Fri Aug 21 06:37:44 UTC 2026 - Fritz <code@fritztech.net>
 
 - Stop expanding systemd RPM macros in spec comments so openSUSE rpmbuild

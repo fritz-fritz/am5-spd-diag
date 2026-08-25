@@ -59,8 +59,9 @@ jobs:
         run: make test
 
   # Source0 + vendor + pinned rustc, then one osc build per OBS repo.
-  # Never osc commit. fail-fast cancels remaining cells on the first red.
-  # Skip on push to master/main: the PR aggregator already gated the merge.
+  # Never osc commit. fail-fast is off so one distro's mirror/API flake does
+  # not cancel the rest of the matrix. Skip on push to master/main: the PR
+  # aggregator already gated the merge.
   dist:
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -125,7 +126,7 @@ jobs:
       contents: read
       actions: write
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix: ${{ fromJSON(needs.dist.outputs.matrix) }}
     env:
       DIST_PARENT: ${{ github.workspace }}/osc-dist
@@ -182,8 +183,32 @@ jobs:
           } > "$OSC_RC"
           chmod 600 "$OSC_RC"
 
+      # OBS/Fedora hosts are dual-stack. GitHub-hosted runners often have AAAA
+      # records but no IPv6 route, so urllib3 dies with ENETUNREACH (errno 101)
+      # while fetching the CPIO fallback after Fedora mirror 404s.
+      - name: Prefer IPv4 for OBS downloads
+        run: |
+          echo 'precedence ::ffff:0:0/96  100' | sudo tee -a /etc/gai.conf
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 || true
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 || true
+          for host in api.opensuse.org download.opensuse.org; do
+            ip=$(getent ahostsv4 "$host" | awk '/STREAM/ {print $1; exit}')
+            if [ -n "$ip" ]; then
+              echo "$ip $host" | sudo tee -a /etc/hosts
+            fi
+          done
+
       - name: osc build ${{ matrix.repo }}
-        run: scripts/osc_build.sh "${{ matrix.repo }}" x86_64
+        run: |
+          attempt=1
+          until scripts/osc_build.sh "${{ matrix.repo }}" x86_64; do
+            if [ "$attempt" -ge 2 ]; then
+              exit 1
+            fi
+            attempt=$((attempt + 1))
+            echo "osc build failed; retrying (attempt ${attempt}/2) ..."
+            sleep 20
+          done
 
   # GitHub lists each matrix cell as "osc-build (Repo)". Require this job, not
   # those names: needs.osc-build.result is success only if every cell succeeded.
