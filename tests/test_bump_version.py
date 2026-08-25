@@ -496,7 +496,7 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert len(repos) >= 13
     assert "fail-fast: false" in ci
     assert "precedence ::ffff:0:0/96  100" in ci
-    assert "ahostsv4" in ci
+    assert "ahostsv4" not in ci
     assert "retrying (attempt" in ci
     assert "fromJSON(needs.dist.outputs.matrix)" in ci
     assert "needs: [test, dist, osc-build]" in ci
@@ -514,6 +514,8 @@ def test_dist_splits_vendor_and_skips_rustc() -> None:
     assert "OSC_VM_TYPE" in osc_build
     assert "OSC_PRELOAD" in osc_build
     assert "--download-api-only" in osc_build
+    assert "osc_http_timeout" in osc_build
+    assert "OSC_HTTP_CONNECT_TIMEOUT" in osc_build
     assert "obs_build_cmd.sh" in osc_build
     assert '--config "$OSC_RC"' in osc_build
     assert not re.search(r'cmd\+=\(-c ', osc_build)
@@ -725,6 +727,23 @@ def test_release_profile_and_rpmlint() -> None:
     assert 'osc commit -m "Release $VERSION from $TAG ($SOURCE_SHA)"' not in release
 
 
+def test_osc_http_connect_timeout() -> None:
+    env = os.environ.copy()
+    env["OSC_HTTP_CONNECT_TIMEOUT"] = "30"
+    script = rf"""
+import sys
+sys.path.insert(0, {(str(ROOT / "scripts"))!r})
+import osc_http_timeout
+osc_http_timeout.install()
+import urllib3
+timeout = urllib3.PoolManager().connection_pool_kw.get("timeout")
+assert timeout is not None
+assert timeout.connect_timeout == 30
+assert urllib3.HTTPSConnectionPool("example.com").timeout.connect_timeout == 30
+"""
+    subprocess.check_call(["python3", "-c", script], env=env, cwd=ROOT)
+
+
 def _write_tree(root: Path) -> None:
     (root / "man").mkdir()
     (root / "Cargo.toml").write_text(CARGO, encoding="utf-8")
@@ -751,4 +770,5 @@ if __name__ == "__main__":
     test_github_actions_pinned_to_full_sha()
     test_obs_package_meta_disables_unwanted_repos()
     test_release_profile_and_rpmlint()
+    test_osc_http_connect_timeout()
     print("ok")

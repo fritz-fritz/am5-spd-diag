@@ -22,12 +22,16 @@ OSC_WC=${OSC_WC:-/tmp/am5-spd-diag-osc-wc}
 DIST_PARENT=${DIST_PARENT:-$(cd "$ROOT/.." && pwd)}
 RUST_FILE=$("$ROOT/scripts/rust_pin.sh" file "$ROOT/obs/rust-dist.txt")
 
+# osc constructs urllib3 pools with timeout=None. The wrapper fails connects
+# in OSC_HTTP_CONNECT_TIMEOUT seconds (default 30) instead of hanging.
+export OSC_HTTP_CONNECT_TIMEOUT="${OSC_HTTP_CONNECT_TIMEOUT:-30}"
+
 # Cursor (and other AppImage hosts) export APPIMAGE+OWD. osc's babysitter
 # then chdirs to OWD ($HOME), so `osc build` from a checkout fails with
 # "Directory '/home/…' is not a working copy".
 osc() {
 	local -a cmd
-	cmd=(/usr/bin/osc)
+	cmd=(python3 "$ROOT/scripts/osc_http_timeout.py")
 	if [ -n "${OSC_RC:-}" ]; then
 		cmd+=(--config "$OSC_RC")
 	fi
