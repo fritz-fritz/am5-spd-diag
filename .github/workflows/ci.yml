@@ -185,18 +185,14 @@ jobs:
 
       # OBS/Fedora hosts are dual-stack. GitHub-hosted runners often have AAAA
       # records but no IPv6 route, so urllib3 dies with ENETUNREACH (errno 101)
-      # while fetching the CPIO fallback after Fedora mirror 404s.
+      # while fetching the CPIO fallback after Fedora mirror 404s. Do not pin
+      # those hosts in /etc/hosts: download.opensuse.org geo-redirects, and a
+      # pinned origin made the Tumbleweed retry hang on a stuck IP.
       - name: Prefer IPv4 for OBS downloads
         run: |
           echo 'precedence ::ffff:0:0/96  100' | sudo tee -a /etc/gai.conf
           sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1 || true
           sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1 || true
-          for host in api.opensuse.org download.opensuse.org; do
-            ip=$(getent ahostsv4 "$host" | awk '/STREAM/ {print $1; exit}')
-            if [ -n "$ip" ]; then
-              echo "$ip $host" | sudo tee -a /etc/hosts
-            fi
-          done
 
       - name: osc build ${{ matrix.repo }}
         run: |
