@@ -32,7 +32,7 @@ URL:            https://github.com/fritz-fritz/am5-spd-diag
 Source0:        %{name}-%{version}.tar.xz
 Source1:        %{name}-%{version}-vendor.tar.zst
 # Official rustc (build-time only). Version is obs/rust-dist.txt.
-Source2:        rust-1.97.1-x86_64-unknown-linux-gnu.tar.xz
+Source2:        rust-1.98.0-x86_64-unknown-linux-gnu.tar.xz
 ExclusiveArch:  x86_64
 # Cargo strip=true already removes symbols; do not emit debuginfo/debugsource.
 %define debug_package %{nil}
