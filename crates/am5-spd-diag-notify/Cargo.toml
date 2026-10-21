@@ -19,7 +19,7 @@ gdk4-wayland = "0.11"
 gtk4 = { version = "0.11", features = ["v4_8"] }
 pulldown-cmark = "0.13"
 serde_json = "1"
-zbus = "5"
+zbus = "6"
 
 [features]
 default = ["gtk4_v4_10"]
