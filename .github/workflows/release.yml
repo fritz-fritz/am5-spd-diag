@@ -177,7 +177,7 @@ jobs:
         id: rust
         run: echo "version=$(../workflow-src/scripts/rust_pin.sh channel rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master
+      - uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master
         with:
           toolchain: ${{ steps.rust.outputs.version }}
           components: rustfmt, clippy
